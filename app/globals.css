@@ -1,18 +1,17 @@
 @import "tailwindcss";
 
 :root {
-  --background: #080c14;
-  --foreground: #f1f5f9;
-  --card: #0f172a;
-  --card-foreground: #f8fafc;
+  --background: #0b0f17;
+  --foreground: #f8fafc;
+  --card: #111622;
+  --card-foreground: #f1f5f9;
   --border: #1e293b;
-  --primary: #00e5ff;
-  --primary-glow: rgba(0, 229, 255, 0.15);
-  --accent-amber: #f59e0b;
-  --accent-emerald: #10b981;
-  --accent-rose: #f43f5e;
-  --accent-cyan: #06b6d4;
-  --accent-indigo: #6366f1;
+  --accent: #0284c7;
+  --accent-hover: #0369a1;
+  --pass: #10b981;
+  --fail: #ef4444;
+  --warning: #f59e0b;
+  --info: #3b82f6;
 }
 
 body {
@@ -22,26 +21,21 @@ body {
   overflow-x: hidden;
 }
 
-/* Automotive subtle grid background */
-.engineering-grid {
+/* Subtle engineering grid - very faint */
+.subtle-grid {
   background-size: 32px 32px;
   background-image: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    linear-gradient(to right, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
 }
 
-.engineering-dots {
-  background-size: 20px 20px;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-}
-
-/* Custom scrollbars for technical data panels */
+/* Custom scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0b0f19;
+  background: #0b0f17;
 }
 ::-webkit-scrollbar-thumb {
   background: #1e293b;
@@ -49,32 +43,4 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #334155;
-}
-
-/* Glow and engineering HUD styling */
-.hud-border {
-  border: 1px solid #1e293b;
-  position: relative;
-}
-
-.hud-border::before {
-  content: "";
-  position: absolute;
-  top: -1px;
-  left: 12px;
-  width: 24px;
-  height: 2px;
-  background: #00e5ff;
-  opacity: 0.7;
-}
-
-.scanline {
-  background: linear-gradient(
-    to bottom,
-    rgba(255,255,255,0),
-    rgba(255,255,255,0) 50%,
-    rgba(0, 229, 255, 0.02) 50%,
-    rgba(0, 229, 255, 0.02)
-  );
-  background-size: 100% 4px;
 }
