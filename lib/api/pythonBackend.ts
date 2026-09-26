@@ -1,6 +1,6 @@
 /**
  * Python Backend Client (FastAPI on http://127.0.0.1:8000)
- * Directly connects frontend to the Python validation engine.
+ * Directly connects frontend to the Python AI validation engine.
  */
 
 const PYTHON_BACKEND_URL = process.env.NEXT_PUBLIC_PYTHON_BACKEND_URL || 'http://127.0.0.1:8000';
@@ -50,28 +50,9 @@ export interface PythonCriticResponse {
   coverage_note: string;
 }
 
-export interface PythonTestRunResult {
-  test_id: string;
-  status: 'PASS' | 'FAIL' | 'BLOCKED';
-  observed_result: string;
-  failure_reason: string | null;
-  potential_defect: string | null;
-}
-
-export interface PythonRunTestsResponse {
-  run_id: string;
-  results: PythonTestRunResult[];
-  summary: {
-    total: number;
-    passed: number;
-    failed: number;
-    blocked: number;
-  };
-  simulation_note: string;
-}
-
 /**
  * 1. POST /analyze
+ * Ingests requirement text and extracts structured automotive engineering attributes.
  */
 export async function pyAnalyzeRequirement(requirementText: string): Promise<PythonRequirementAnalysis> {
   const res = await fetch(`${PYTHON_BACKEND_URL}/analyze`, {
@@ -82,7 +63,7 @@ export async function pyAnalyzeRequirement(requirementText: string): Promise<Pyt
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Python backend /analyze error (${res.status})`);
+    throw new Error(err.detail || err.error || `Python backend /analyze error (${res.status})`);
   }
 
   return res.json();
@@ -90,10 +71,11 @@ export async function pyAnalyzeRequirement(requirementText: string): Promise<Pyt
 
 /**
  * 2. POST /generate-tests
+ * Synthesizes a comprehensive 7-scenario automotive validation test suite.
  */
 export async function pyGenerateTests(
   requirementText: string,
-  analysis?: PythonRequirementAnalysis
+  analysis?: any
 ): Promise<PythonGenerateTestsResponse> {
   const res = await fetch(`${PYTHON_BACKEND_URL}/generate-tests`, {
     method: 'POST',
@@ -106,7 +88,7 @@ export async function pyGenerateTests(
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Python backend /generate-tests error (${res.status})`);
+    throw new Error(err.detail || err.error || `Python backend /generate-tests error (${res.status})`);
   }
 
   return res.json();
@@ -114,48 +96,43 @@ export async function pyGenerateTests(
 
 /**
  * 3. POST /critic
+ * Evaluates test suite coverage against ISO 26262/ASPICE principles and suggests missing scenarios.
  */
 export async function pyCriticTests(
   requirementText: string,
-  tests: PythonTestCase[]
+  tests: any[]
 ): Promise<PythonCriticResponse> {
   const res = await fetch(`${PYTHON_BACKEND_URL}/critic`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       requirement: requirementText,
-      tests,
+      tests: tests.map((t) => ({
+        test_id: t.test_id || t.id,
+        requirement_id: t.requirement_id || t.req_id || 'REQ-001',
+        title: t.title,
+        category: t.category,
+        priority: t.priority,
+        risk: t.risk,
+        preconditions: Array.isArray(t.preconditions) ? t.preconditions : [t.preconditions || 'Ignition ON'],
+        steps: (t.steps || []).map((s: any) => (typeof s === 'string' ? s : s.action || String(s))),
+        expected_result: t.expected_result || t.expected_results?.[0]?.expectation || '',
+        reason_generated: t.reason_generated || t.why_generated || t.description || 'Validation scenario',
+      })),
     }),
   });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Python backend /critic error (${res.status})`);
+    throw new Error(err.detail || err.error || `Python backend /critic error (${res.status})`);
   }
 
   return res.json();
 }
 
 /**
- * 4. POST /run-tests
- */
-export async function pyRunTests(tests: PythonTestCase[]): Promise<PythonRunTestsResponse> {
-  const res = await fetch(`${PYTHON_BACKEND_URL}/run-tests`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tests }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Python backend /run-tests error (${res.status})`);
-  }
-
-  return res.json();
-}
-
-/**
- * 5. GET /health
+ * 4. GET /health
+ * Diagnostic health check.
  */
 export async function pyCheckHealth(): Promise<{ status: string; service: string; version: string; demo_mode: boolean }> {
   const res = await fetch(`${PYTHON_BACKEND_URL}/health`);

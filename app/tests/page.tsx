@@ -19,6 +19,8 @@ import {
   AlertCircle,
   Check
 } from 'lucide-react';
+import { pyGenerateTests, pyCriticTests } from '@/lib/api/pythonBackend';
+import { DEMO_REQUIREMENTS } from '@/data/demo-requirements';
 
 export interface PaccarTestCase {
   test_id: string;
@@ -293,41 +295,54 @@ function TestsContent() {
   const [isCriticLoading, setIsCriticLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Load from Python backend or use initial suite
+  // Load from Python backend using active requirement
   useEffect(() => {
     async function fetchFromPython() {
       try {
-        const res = await fetch('http://127.0.0.1:8000/generate-tests', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            requirement: 'The telematics ECU shall transmit vehicle GPS position every 10 seconds when ignition is ON and cellular connectivity is available.'
-          })
-        });
+        let reqText = 'The telematics ECU shall transmit vehicle GPS position every 10 seconds when ignition is ON and cellular connectivity is available.';
+        let analysisObj: any = undefined;
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data.tests && data.tests.length > 0) {
-            // Map Python tests to PaccarTestCase format
-            const mapped: PaccarTestCase[] = data.tests.map((t: any) => ({
-              test_id: t.test_id,
-              requirement_id: t.requirement_id || reqId,
-              title: t.title,
-              objective: t.description || `Verify ${t.title.toLowerCase()}`,
-              category: t.category,
-              priority: t.priority,
-              risk: t.risk,
-              preconditions: Array.isArray(t.preconditions) ? t.preconditions : [t.preconditions || 'Ignition ON'],
-              test_inputs: { ignition: 'ON', cellular: 'CONNECTED', gps: 'ACTIVE' },
-              steps: t.steps || ['1. Initialize bench', '2. Apply input', '3. Verify telemetry'],
-              expected_result: t.expected_result,
-              failure_condition: `Test fails if observed behavior deviates from: ${t.expected_result}`,
-              test_data: { interval: '10s', interface: 'CAN/Cellular' },
-              traceability: { requirement_id: t.requirement_id || reqId },
-              reason_generated: t.reason_generated
-            }));
-            setTestSuite(mapped);
+        if (typeof window !== 'undefined') {
+          const stored = sessionStorage.getItem('veridrive_active_requirement');
+          if (stored) {
+            try {
+              const parsed = JSON.parse(stored);
+              reqText = parsed.raw_text || reqText;
+              analysisObj = parsed;
+            } catch (e) {}
           }
+        }
+
+        if (reqId && reqId !== 'REQ-001' && reqId !== 'REQ-TLM-001') {
+          const found = DEMO_REQUIREMENTS.find((r) => r.id === reqId);
+          if (found) {
+            reqText = found.raw_text;
+            analysisObj = found;
+          }
+        }
+
+        const data = await pyGenerateTests(reqText, analysisObj);
+
+        if (data.tests && data.tests.length > 0) {
+          // Map Python tests to PaccarTestCase format
+          const mapped: PaccarTestCase[] = data.tests.map((t: any) => ({
+            test_id: t.test_id,
+            requirement_id: t.requirement_id || reqId,
+            title: t.title,
+            objective: t.description || `Verify ${t.title.toLowerCase()}`,
+            category: t.category,
+            priority: t.priority,
+            risk: t.risk,
+            preconditions: Array.isArray(t.preconditions) ? t.preconditions : [t.preconditions || 'Ignition ON'],
+            test_inputs: { ignition: 'ON', cellular: 'CONNECTED', gps: 'ACTIVE' },
+            steps: t.steps || ['1. Initialize bench', '2. Apply input', '3. Verify telemetry'],
+            expected_result: t.expected_result,
+            failure_condition: `Test fails if observed behavior deviates from: ${t.expected_result}`,
+            test_data: { interval: '10s', interface: 'CAN/Cellular' },
+            traceability: { requirement_id: t.requirement_id || reqId },
+            reason_generated: t.reason_generated
+          }));
+          setTestSuite(mapped);
         }
       } catch (err) {
         console.warn('Python backend offline or unreachable, using pre-synthesized suite:', err);
@@ -337,49 +352,80 @@ function TestsContent() {
     fetchFromPython();
   }, [reqId]);
 
-  // Handle adding critic recommended test
-  const handleAddCriticTest = () => {
+  // Handle adding critic recommended test by querying Python backend /critic
+  const handleAddCriticTest = async () => {
     setIsCriticLoading(true);
-    setTimeout(() => {
-      const criticTest: PaccarTestCase = {
-        test_id: 'TC-008',
-        requirement_id: reqId,
-        title: 'Diagnostic trouble code (DTC) logging on persistent GPS failure',
-        objective: 'Verify that the ECU sets DTC B109F-13 and stores freeze-frame data when GPS antenna open-circuit condition persists for > 5.0 seconds.',
-        category: 'Diagnostic',
-        priority: 'HIGH',
-        risk: 'HIGH',
-        preconditions: [
-          'Ignition ON',
-          'OBD-II / UDS diagnostic stack initialized on CAN interface'
-        ],
-        test_inputs: {
-          gnss_antenna: 'DISCONNECTED (Open Circuit)',
-          duration: '5000 ms'
-        },
-        steps: [
-          'Disconnect GNSS antenna coax cable.',
-          'Hold fault condition active for 5.0 seconds.',
-          'Send UDS Service 0x19 0x02 (ReadDTCInformation by Status Mask).',
-          'Verify DTC B109F-13 is reported in Confirmed and Active status byte.'
-        ],
-        expected_result: 'ECU logs DTC B109F-13 within 5.0s and populates diagnostic freeze frame with vehicle speed and timestamps.',
-        failure_condition: 'Test fails if no DTC is stored, or if DTC is cleared before service command.',
-        test_data: {
-          dtc_code: 'B109F-13',
-          debounce_time: '5000 ms'
-        },
-        traceability: {
-          requirement_id: reqId
-        },
-        reason_generated: 'Added by Critic: Requirement relies on external GPS sensor; persistent failure must log diagnostic fault according to ISO 14229 / SAE J1939.',
-        added_by_critic: true
-      };
 
-      setTestSuite((prev) => [...prev, criticTest]);
-      setCriticAdded(true);
+    try {
+      let reqText = 'The telematics ECU shall transmit vehicle GPS position every 10 seconds when ignition is ON and cellular connectivity is available.';
+      if (typeof window !== 'undefined') {
+        const stored = sessionStorage.getItem('veridrive_active_requirement');
+        if (stored) {
+          try {
+            reqText = JSON.parse(stored).raw_text || reqText;
+          } catch (e) {}
+        }
+      }
+
+      const data = await pyCriticTests(reqText, testSuite);
+      const suggestions = data.additional_test_suggestions || [];
+      if (suggestions.length > 0) {
+        const newTests: PaccarTestCase[] = suggestions.map((s: any) => ({
+          test_id: s.test_id || `TC-CRITIC-001`,
+          requirement_id: reqId,
+          title: s.title,
+          objective: `Critic Audit: ${s.title}`,
+          category: s.category || 'Recovery',
+          priority: s.priority || 'HIGH',
+          risk: s.risk || 'HIGH',
+          preconditions: s.preconditions || ['Ignition ON', 'Cellular connected'],
+          test_inputs: { network_outage_duration: '45s' },
+          steps: s.steps || ['1. Restore network', '2. Verify queue flush'],
+          expected_result: s.expected_result,
+          failure_condition: `Fails if: ${s.expected_result}`,
+          test_data: { dtc_code: 'U0423-82', debounce_time: '3500ms' },
+          traceability: { requirement_id: reqId },
+          reason_generated: s.reason_generated || 'Added by AI Critic Review',
+          added_by_critic: true
+        }));
+
+        setTestSuite((prev) => [...prev, ...newTests]);
+        setCriticAdded(true);
+        return;
+      }
+    } catch (err) {
+      console.warn('Critic API query fallback:', err);
+    } finally {
       setIsCriticLoading(false);
-    }, 500);
+    }
+
+    // Deterministic fallback
+    const fallbackTest: PaccarTestCase = {
+      test_id: 'TC-008',
+      requirement_id: reqId,
+      title: 'Cellular reconnection telemetry recovery after tunnel outage',
+      objective: 'Verify that when cellular signal is restored, ECU reconnects and safely flushes buffered GPS points in chronological FIFO order.',
+      category: 'Recovery',
+      priority: 'HIGH',
+      risk: 'HIGH',
+      preconditions: ['Vehicle simulated passing through tunnel with 45-second cellular loss', 'Ignition active, GPS fix intact'],
+      test_inputs: { gnss_antenna: 'DISCONNECTED', duration: '5000 ms' },
+      steps: [
+        '1. Restore cellular RF connectivity after 45 seconds of dead zone.',
+        '2. Observe TCP/TLS connection re-handshake and MQTT ping response.',
+        '3. Verify queued telemetry buffer is transmitted prior to fresh 10s packet.'
+      ],
+      expected_result: 'Connection recovered within 3.5 seconds; buffered coordinates delivered in FIFO order without duplicates.',
+      failure_condition: 'Test fails if buffered telemetry packets are dropped or delivered out of sequence.',
+      test_data: { dtc_code: 'U0423-82', debounce_time: '3500 ms' },
+      traceability: { requirement_id: reqId },
+      reason_generated: 'Added by Critic: Fills critical missing scenario for transient network loss common on freight highway corridors.',
+      added_by_critic: true
+    };
+
+    setTestSuite((prev) => [...prev, fallbackTest]);
+    setCriticAdded(true);
+    setIsCriticLoading(false);
   };
 
   // Filtered test list

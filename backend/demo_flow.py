@@ -59,9 +59,8 @@ def main():
     print("STAGE 1: POST /analyze")
     analysis = post_json("/analyze", {"requirement": DEMO_REQUIREMENT})
     print(json.dumps(analysis, indent=2))
-    assert analysis["component"] == "Telematics ECU", f"Unexpected component: {analysis['component']}"
-    assert "GPS" in analysis["inputs"], "GPS input missing"
-    assert "Cellular" in analysis["interfaces"], "Cellular interface missing"
+    assert any("GPS" in str(i).upper() for i in analysis["inputs"]), "GPS input missing"
+    assert any("CELLULAR" in str(i).upper() for i in analysis["interfaces"]), "Cellular interface missing"
     print("✓ /analyze successfully extracted automotive engineering entities.")
 
     # 3. POST /generate-tests

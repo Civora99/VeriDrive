@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { DEMO_REQUIREMENTS } from '@/data/demo-requirements';
 import { StructuredRequirement } from '@/lib/types/requirements';
+import { pyAnalyzeRequirement } from '@/lib/api/pythonBackend';
 
 const DEMO_REQ_TLM = DEMO_REQUIREMENTS.find((r) => r.id === 'REQ-TLM-001') || DEMO_REQUIREMENTS[0];
 
@@ -44,8 +45,17 @@ function AnalyzeContent() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-load if query param exists or default to REQ-TLM-001 demo
+  // Auto-load if query param exists, or check custom requirement from homepage, or default to REQ-TLM-001 demo
   useEffect(() => {
+    const isCustom = searchParams.get('mode') === 'custom';
+    const customText = typeof window !== 'undefined' ? sessionStorage.getItem('veridrive_custom_requirement') : null;
+    if (isCustom && customText) {
+      setInputText(customText);
+      setActiveReqId('REQ-CUSTOM');
+      setRequirement(null);
+      return;
+    }
+
     const targetId = reqParam || 'REQ-TLM-001';
     const found = DEMO_REQUIREMENTS.find((r) => r.id === targetId);
     if (found) {
@@ -53,7 +63,7 @@ function AnalyzeContent() {
       setActiveReqId(found.id);
       setRequirement(found);
     }
-  }, [reqParam]);
+  }, [reqParam, searchParams]);
 
   // Loading animation simulation steps
   useEffect(() => {
@@ -121,40 +131,8 @@ function AnalyzeContent() {
     setErrorMsg(null);
 
     try {
-      // 1. Primary: Query Python FastAPI backend directly
-      let pyData: any = null;
-      try {
-        const pyRes = await fetch('http://127.0.0.1:8000/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requirement: inputText.trim() }),
-        });
-        if (pyRes.ok) {
-          pyData = await pyRes.json();
-        }
-      } catch (directErr) {
-        console.warn('Direct Python backend call failed, falling back to /api/analyze proxy:', directErr);
-      }
-
-      // 2. Fallback to /api/analyze (which also forwards to Python backend)
-      if (!pyData) {
-        const res = await fetch('/api/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            requirement: inputText,
-            raw_text: inputText,
-            req_id: activeReqId || undefined,
-          }),
-        });
-        const resJson = await res.json();
-        if (resJson.py_data) {
-          pyData = resJson.py_data;
-        } else if (resJson.requirement) {
-          setRequirement(resJson.requirement);
-          return;
-        }
-      }
+      // Query Python validation backend via centralized client
+      const pyData = await pyAnalyzeRequirement(inputText.trim());
 
       if (pyData) {
         // Map Python backend RequirementAnalysis to StructuredRequirement
@@ -198,6 +176,9 @@ function AnalyzeContent() {
   const handleGenerateTestSuite = () => {
     if (!requirement) return;
     setIsGenerating(true);
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('veridrive_active_requirement', JSON.stringify(requirement));
+    }
     router.push(`/tests?req=${encodeURIComponent(requirement.id)}`);
   };
 

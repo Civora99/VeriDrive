@@ -159,8 +159,8 @@ def generate_tests_suite(
     """
     req_id = analysis.requirement_id if analysis else "REQ-001"
 
-    # If demo mode is active or requirement matches demo requirement, return deterministic suite
-    if settings.DEMO_MODE or not gemini_service.is_available() or is_demo_requirement(requirement):
+    # If demo mode is active or Gemini is unavailable, return deterministic suite
+    if settings.DEMO_MODE or not gemini_service.is_available():
         logger.info("Serving deterministic demo test suite for: %s", requirement[:60])
         # Clone and ensure requirement_id is synced
         tests = [

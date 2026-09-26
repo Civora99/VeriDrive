@@ -40,7 +40,7 @@ def evaluate_test_suite(requirement: str, tests: List[TestCase]) -> CriticRespon
     categories_present = sorted(list({t.category for t in tests if t.category}))
 
     # Fallback / deterministic evaluation if demo mode or Gemini unavailable
-    if settings.DEMO_MODE or not gemini_service.is_available() or (is_demo_requirement(requirement) and len(tests) <= 4):
+    if settings.DEMO_MODE or not gemini_service.is_available():
         has_recovery = any(t.category == "Recovery" for t in tests)
         missing = []
         recommendations = []
@@ -104,12 +104,23 @@ def evaluate_test_suite(requirement: str, tests: List[TestCase]) -> CriticRespon
                     )
                 )
 
+        weak_tests_raw = data.get("weak_tests", [])
+        weak_tests = [
+            f"[{w.get('test_id', 'TC')}]: {w.get('issue', str(w))}" if isinstance(w, dict) else str(w)
+            for w in weak_tests_raw
+        ]
+        duplicate_tests_raw = data.get("duplicate_tests", [])
+        duplicate_tests = [
+            f"[{d.get('test_id', 'TC')}]: {d.get('duplicate_of', str(d))}" if isinstance(d, dict) else str(d)
+            for d in duplicate_tests_raw
+        ]
+
         return CriticResponse(
             coverage_percentage=cov_pct,
             covered_categories=data.get("covered_categories", categories_present),
             missing_scenarios=data.get("missing_scenarios", []),
-            duplicate_tests=data.get("duplicate_tests", []),
-            weak_tests=data.get("weak_tests", []),
+            duplicate_tests=duplicate_tests,
+            weak_tests=weak_tests,
             recommendations=data.get("recommendations", []),
             additional_test_suggestions=parsed_suggestions
         )

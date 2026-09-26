@@ -1,5 +1,5 @@
-from typing import List, Optional, Literal
-from pydantic import BaseModel, Field
+from typing import List, Optional, Literal, Any, Dict, Union
+from pydantic import BaseModel, Field, ConfigDict
 
 # Valid test categories specified in automotive validation
 ValidCategory = Literal[
@@ -27,7 +27,9 @@ class AnalyzeRequest(BaseModel):
         min_length=5
     )
 
+
 class RequirementAnalysis(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     requirement_id: str = Field(default="REQ-001", description="Standardized requirement ID")
     requirement_text: str = Field(..., description="Original requirement statement")
     component: str = Field(default="Unknown", description="Target automotive ECU / subsystem")
@@ -44,20 +46,22 @@ class RequirementAnalysis(BaseModel):
 # 2. /generate-tests models
 # ---------------------------------------------------------------------------
 class TestCase(BaseModel):
-    test_id: str = Field(..., description="Unique test case identifier (e.g., TC-001)")
+    model_config = ConfigDict(extra="ignore")
+    test_id: str = Field(default="TC-001", description="Unique test case identifier (e.g., TC-001)")
     requirement_id: str = Field(default="REQ-001", description="Traceable requirement ID")
-    title: str = Field(..., description="Concise engineering test case title")
-    category: str = Field(..., description="Automotive validation category")
-    priority: str = Field(..., description="Execution priority: LOW, MEDIUM, HIGH, CRITICAL")
-    risk: str = Field(..., description="Associated risk level: LOW, MEDIUM, HIGH, CRITICAL")
+    title: str = Field(default="Validation Scenario", description="Concise engineering test case title")
+    category: str = Field(default="Functional", description="Automotive validation category")
+    priority: str = Field(default="HIGH", description="Execution priority: LOW, MEDIUM, HIGH, CRITICAL")
+    risk: str = Field(default="HIGH", description="Associated risk level: LOW, MEDIUM, HIGH, CRITICAL")
     preconditions: List[str] = Field(default_factory=list, description="Prerequisite conditions before test execution")
     steps: List[str] = Field(default_factory=list, description="Step-by-step test procedure")
-    expected_result: str = Field(..., description="Deterministic pass/fail criterion")
-    reason_generated: str = Field(..., description="Engineering rationale for generating this specific test")
+    expected_result: str = Field(default="Deterministic verification criterion", description="Deterministic pass/fail criterion")
+    reason_generated: str = Field(default="Automotive verification", description="Engineering rationale for generating this specific test")
 
 class GenerateTestsRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     requirement: str = Field(..., description="Requirement text to generate tests for", min_length=5)
-    analysis: Optional[RequirementAnalysis] = Field(
+    analysis: Optional[Any] = Field(
         default=None,
         description="Optional structured analysis previously produced by /analyze"
     )
