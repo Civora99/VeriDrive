@@ -6,56 +6,298 @@ import Link from 'next/link';
 import {
   Search,
   Filter,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  AlertTriangle,
-  Play,
-  ArrowRight,
-  ShieldAlert,
   Sparkles,
   X,
   ChevronRight,
   PlusCircle,
   FileCheck2,
-  Tag
+  Copy,
+  Download,
+  ArrowRight,
+  CheckCircle2,
+  HelpCircle,
+  AlertCircle,
+  Check
 } from 'lucide-react';
-import { TestCase } from '@/lib/types/tests';
-import { DEMO_TEST_SUITES } from '@/data/demo-results';
-import { DEMO_REQUIREMENTS } from '@/data/demo-requirements';
 
-interface ExtendedTestCase extends TestCase {
-  priority?: 'High' | 'Medium' | 'Low';
-  risk?: 'High' | 'Medium' | 'Low';
-  status?: 'Passed' | 'Failed' | 'Ready' | 'Not Run';
-  why_generated?: string;
-  coverage_tags?: string[];
+export interface PaccarTestCase {
+  test_id: string;
+  requirement_id: string;
+  title: string;
+  objective: string;
+  category: 'Functional' | 'Boundary' | 'Negative' | 'Timing' | 'Communication' | 'Diagnostic' | 'Recovery' | 'State Transition' | 'Cross-ECU' | 'Fault Injection';
+  priority: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+  risk: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+  preconditions: string[];
+  test_inputs: Record<string, string>;
+  steps: string[];
+  expected_result: string;
+  failure_condition: string;
+  test_data: Record<string, string>;
+  traceability: {
+    requirement_id: string;
+  };
+  reason_generated: string;
   added_by_critic?: boolean;
 }
+
+// 7 Standard synthesized test scenarios conforming to PACCAR TestPilot specification
+const INITIAL_PACCAR_TESTS: PaccarTestCase[] = [
+  {
+    test_id: 'TC-001',
+    requirement_id: 'REQ-001',
+    title: 'Normal GPS transmission at 10-second cadence',
+    objective: 'Verify that the telematics ECU transmits valid vehicle GPS coordinates to cloud endpoint every 10.0 seconds when ignition is ON and cellular network is connected.',
+    category: 'Functional',
+    priority: 'HIGH',
+    risk: 'HIGH',
+    preconditions: [
+      'Telematics ECU is powered on test bench',
+      'Ignition state (KL15) is ON (12V active)',
+      'Cellular modem is registered on OEM APN network',
+      'GNSS receiver has acquired valid 3D satellite fix'
+    ],
+    test_inputs: {
+      ignition: 'ON',
+      gps_fix: '3D_VALID',
+      cellular: 'CONNECTED'
+    },
+    steps: [
+      'Power ON the telematics ECU test bench.',
+      'Set ignition state input to ON (KL15 = 12V).',
+      'Provide valid GPS satellite RF simulation coordinates.',
+      'Establish cellular connectivity with cloud endpoint.',
+      'Monitor outgoing telemetry frames over 60 seconds.',
+      'Measure transmission intervals between consecutive packets.'
+    ],
+    expected_result: 'The telematics ECU shall transmit the vehicle GPS position at strict 10-second intervals (±500ms) while ignition remains ON and cellular connectivity is available.',
+    failure_condition: 'Test fails if no telemetry packet is published within 10.5 seconds, or if coordinate payload contains corrupt/empty values.',
+    test_data: {
+      latitude: '47.5255 N',
+      longitude: '122.1804 W',
+      interval_nominal: '10.0 seconds',
+      tolerance: '±500 ms'
+    },
+    traceability: {
+      requirement_id: 'REQ-001'
+    },
+    reason_generated: 'Validates primary nominal operational requirement under standard vehicle operating conditions.'
+  },
+  {
+    test_id: 'TC-002',
+    requirement_id: 'REQ-001',
+    title: '10-second periodic interval timing boundary and jitter',
+    objective: 'Verify clock jitter and scheduler timing drift do not exceed maximum permissible OEM tolerance over 100 consecutive transmission cycles.',
+    category: 'Timing',
+    priority: 'HIGH',
+    risk: 'MEDIUM',
+    preconditions: [
+      'Master PTP/NTP network clock synchronized',
+      'Ignition ON, cellular connection active, continuous GPS lock'
+    ],
+    test_inputs: {
+      ignition: 'ON',
+      cellular: 'CONNECTED',
+      measurement_duration: '1000s'
+    },
+    steps: [
+      'Arm precision hardware sniffer on cellular uplink interface.',
+      'Record inter-arrival timestamp delta for 100 consecutive periodic transmissions.',
+      'Calculate maximum, minimum, and cumulative timer drift across measurement window.'
+    ],
+    expected_result: 'All packet transmission deltas fall strictly between 9.5s and 10.5s; jitter does not exceed ±500ms with zero cumulative timer starvation.',
+    failure_condition: 'Test fails if any inter-packet arrival time exceeds 10.5s or drops below 9.5s.',
+    test_data: {
+      min_allowable_interval: '9500 ms',
+      max_allowable_interval: '10500 ms',
+      consecutive_cycles: '100'
+    },
+    traceability: {
+      requirement_id: 'REQ-001'
+    },
+    reason_generated: 'Validates timing constraints and verifies scheduler does not experience timer drift or thread starvation.'
+  },
+  {
+    test_id: 'TC-003',
+    requirement_id: 'REQ-001',
+    title: 'GPS signal unavailable / antenna disconnect handling',
+    objective: 'Verify that invalid or missing GPS coordinates are not transmitted as valid vehicle position data when GNSS signal is lost.',
+    category: 'Negative',
+    priority: 'HIGH',
+    risk: 'HIGH',
+    preconditions: [
+      'Ignition ON, cellular connected, nominal 10s telemetry cadence active'
+    ],
+    test_inputs: {
+      ignition: 'ON',
+      gps_signal: 'ATTENUATED_0_DBM',
+      cellular: 'CONNECTED'
+    },
+    steps: [
+      'Attenuate or disconnect GNSS RF antenna line.',
+      'Wait for receiver 3D satellite lock flag to drop.',
+      'Observe payload of next scheduled 10-second transmission.'
+    ],
+    expected_result: 'The ECU shall detect invalid GPS data and shall not transmit the invalid GPS position as valid vehicle position data (asserts GPS_FIX_INVALID flag).',
+    failure_condition: 'Test fails if invalid, zeroed, or unflagged coordinates are transmitted as valid vehicle position.',
+    test_data: {
+      gnss_rf_power: '-140 dBm (No Fix)',
+      expected_status_flag: '0x00 (INVALID)'
+    },
+    traceability: {
+      requirement_id: 'REQ-001'
+    },
+    reason_generated: 'The requirement depends on valid GPS input, therefore GPS loss must be validated as a negative scenario.'
+  },
+  {
+    test_id: 'TC-004',
+    requirement_id: 'REQ-001',
+    title: 'Cellular network unavailable / dead-zone buffering',
+    objective: 'Verify ECU behavior when cellular connectivity is severed, ensuring telemetry coordinates are buffered locally in ring buffer rather than discarded.',
+    category: 'Communication',
+    priority: 'HIGH',
+    risk: 'HIGH',
+    preconditions: [
+      'Ignition ON, valid GPS lock active'
+    ],
+    test_inputs: {
+      ignition: 'ON',
+      gps_fix: 'VALID',
+      cellular: 'DISCONNECTED'
+    },
+    steps: [
+      'Mute cellular base station carrier (simulate dead-zone or tunnel).',
+      'Continue driving simulation for 60 seconds (6 expected periodic points).',
+      'Inspect non-volatile telematics ring buffer memory.'
+    ],
+    expected_result: 'ECU buffers un-transmitted GPS coordinates in non-volatile flash memory in chronological FIFO sequence without data loss.',
+    failure_condition: 'Test fails if coordinates are discarded without queueing or if buffer overflows prematurely.',
+    test_data: {
+      outage_duration: '60 seconds',
+      expected_buffered_records: '6'
+    },
+    traceability: {
+      requirement_id: 'REQ-001'
+    },
+    reason_generated: 'Validates communication dependency loss behavior and local non-volatile buffering reliability.'
+  },
+  {
+    test_id: 'TC-005',
+    requirement_id: 'REQ-001',
+    title: 'Cellular reconnection and buffered telemetry recovery',
+    objective: 'Verify that when cellular signal is restored, the ECU reconnects and flushes all buffered GPS points in chronological order.',
+    category: 'Recovery',
+    priority: 'HIGH',
+    risk: 'HIGH',
+    preconditions: [
+      'ECU in buffered state following cellular outage with 6 queued records'
+    ],
+    test_inputs: {
+      cellular_carrier: 'RESTORED',
+      ignition: 'ON'
+    },
+    steps: [
+      'Re-enable cellular network base station RF carrier.',
+      'Monitor modem network attachment and TLS session handshake.',
+      'Observe queue draining sequence and resumption of real-time 10s cadence.'
+    ],
+    expected_result: 'All buffered GPS packets are transmitted in chronological order with original historical timestamps, followed by resumption of real-time 10s cadence.',
+    failure_condition: 'Test fails if buffered packets are lost, transmitted out of order, or if current cadence fails to resume.',
+    test_data: {
+      network_reconnect_timeout: '15 seconds',
+      flush_cadence: 'Burst FIFO'
+    },
+    traceability: {
+      requirement_id: 'REQ-001'
+    },
+    reason_generated: 'Validates communication recovery and data integrity preservation after connectivity drop.'
+  },
+  {
+    test_id: 'TC-006',
+    requirement_id: 'REQ-001',
+    title: 'ECU ignition power cycle / brownout restart',
+    objective: 'Verify telematics bootloader recovery and telemetry resumption following an unexpected ignition power cycle or engine crank voltage drop.',
+    category: 'Fault Injection',
+    priority: 'MEDIUM',
+    risk: 'HIGH',
+    preconditions: [
+      'Telematics operating in active 10s transmission mode'
+    ],
+    test_inputs: {
+      kl30_voltage: '13.8V -> 6.5V -> 13.8V',
+      ignition: 'CYCLED'
+    },
+    steps: [
+      'Drop supply voltage to 6.5V for 150ms to simulate cold-crank transient.',
+      'Restore nominal 13.8V power supply.',
+      'Measure time to cold boot completion and first published telemetry message.'
+    ],
+    expected_result: 'ECU reboots cleanly without watchdog latch, recovers non-volatile state, and resumes periodic 10s telemetry within 15.0s of power restoration.',
+    failure_condition: 'Test fails if boot hangs, watchdog trips continuously, or telemetry fails to resume automatically.',
+    test_data: {
+      dip_voltage: '6.5V',
+      dip_duration: '150 ms',
+      max_boot_time: '15.0 seconds'
+    },
+    traceability: {
+      requirement_id: 'REQ-001'
+    },
+    reason_generated: 'Automotive electrical systems experience severe power transients (ISO 16750-2); restart behavior must be verified.'
+  },
+  {
+    test_id: 'TC-007',
+    requirement_id: 'REQ-001',
+    title: 'Stale GPS position detection while vehicle is in motion',
+    objective: 'Verify ECU detects frozen/stale NMEA coordinates from internal GNSS receiver and refuses to publish unverified coordinates as fresh.',
+    category: 'Boundary',
+    priority: 'HIGH',
+    risk: 'CRITICAL',
+    preconditions: [
+      'Ignition ON, cellular connected, vehicle speed simulated > 50 km/h'
+    ],
+    test_inputs: {
+      vehicle_speed: '65 km/h',
+      gps_coordinate_delta: '0.0000 (Frozen)'
+    },
+    steps: [
+      'Inject frozen coordinate values while vehicle speed signal reports 65 km/h.',
+      'Observe position freshness attribute over 3 consecutive cycles (30 seconds).'
+    ],
+    expected_result: 'ECU detects frozen coordinates during motion, asserts position_freshness = STALE (0x02) after 3.0s, and logs diagnostic trouble code.',
+    failure_condition: 'Test fails if frozen coordinates continue to be transmitted with fresh/valid status flag.',
+    test_data: {
+      staleness_timeout: '3000 ms',
+      speed_threshold: '50 km/h'
+    },
+    traceability: {
+      requirement_id: 'REQ-001'
+    },
+    reason_generated: 'Requirement implies transmitting valid vehicle position; static coordinate lock during vehicle motion violates safety integrity.'
+  }
+];
 
 function TestsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const reqId = searchParams.get('req') || 'REQ-TLM-001';
+  const reqId = searchParams.get('req') || 'REQ-001';
 
-  // State
-  const [testSuite, setTestSuite] = useState<ExtendedTestCase[]>([]);
-  const [selectedTest, setSelectedTest] = useState<ExtendedTestCase | null>(null);
+  const [testSuite, setTestSuite] = useState<PaccarTestCase[]>(INITIAL_PACCAR_TESTS);
+  const [selectedTest, setSelectedTest] = useState<PaccarTestCase | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [priorityFilter, setPriorityFilter] = useState('All');
   const [riskFilter, setRiskFilter] = useState('All');
-  const [statusFilter, setStatusFilter] = useState('All');
 
   // AI Critic state
-  const [criticGenerated, setCriticGenerated] = useState(false);
-  const [isGeneratingMissing, setIsGeneratingMissing] = useState(false);
+  const [criticAdded, setCriticAdded] = useState(false);
+  const [isCriticLoading, setIsCriticLoading] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Query Python backend for generated test suite
+  // Load from Python backend or use initial suite
   useEffect(() => {
-    async function loadPythonTests() {
+    async function fetchFromPython() {
       try {
-        const pyRes = await fetch('http://127.0.0.1:8000/generate-tests', {
+        const res = await fetch('http://127.0.0.1:8000/generate-tests', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -63,391 +305,299 @@ function TestsContent() {
           })
         });
 
-        if (pyRes.ok) {
-          const data = await pyRes.json();
+        if (res.ok) {
+          const data = await res.json();
           if (data.tests && data.tests.length > 0) {
-            const mapped: ExtendedTestCase[] = data.tests.map((t: any, index: number) => ({
-              id: t.test_id,
+            // Map Python tests to PaccarTestCase format
+            const mapped: PaccarTestCase[] = data.tests.map((t: any) => ({
               test_id: t.test_id,
-              req_id: t.requirement_id || reqId,
+              requirement_id: t.requirement_id || reqId,
               title: t.title,
-              description: t.description || t.reason_generated,
-              category: t.category as any,
-              priority: (t.priority === 'CRITICAL' || t.priority === 'HIGH' ? 'High' : t.priority === 'MEDIUM' ? 'Medium' : 'Low') as any,
-              risk: (t.risk === 'CRITICAL' || t.risk === 'HIGH' ? 'High' : t.risk === 'MEDIUM' ? 'Medium' : 'Low') as any,
-              status: t.test_id === 'TC-007' ? 'Failed' : index < 4 ? 'Passed' : 'Ready',
-              preconditions: Array.isArray(t.preconditions) ? t.preconditions : [t.preconditions || 'Ignition ON, cellular available'],
-              steps: (t.steps || []).map((stepStr: string, sIdx: number) => ({
-                step_num: sIdx + 1,
-                action: stepStr,
-                dwell_time_ms: 100
-              })),
-              expected_results: [
-                {
-                  check_num: 1,
-                  expectation: t.expected_result,
-                  max_latency_ms: 10000
-                }
-              ],
+              objective: t.description || `Verify ${t.title.toLowerCase()}`,
+              category: t.category,
+              priority: t.priority,
+              risk: t.risk,
+              preconditions: Array.isArray(t.preconditions) ? t.preconditions : [t.preconditions || 'Ignition ON'],
+              test_inputs: { ignition: 'ON', cellular: 'CONNECTED', gps: 'ACTIVE' },
+              steps: t.steps || ['1. Initialize bench', '2. Apply input', '3. Verify telemetry'],
               expected_result: t.expected_result,
-              reason_generated: t.reason_generated,
-              why_generated: t.reason_generated,
-              coverage_tags: [t.category, t.priority, 'Python-Synthesized', 'HIL-Bench'],
-              cleanup: ['Quiesce test bench.'],
-              critic_score: 95,
-              revised_by_critic: false
+              failure_condition: `Test fails if observed behavior deviates from: ${t.expected_result}`,
+              test_data: { interval: '10s', interface: 'CAN/Cellular' },
+              traceability: { requirement_id: t.requirement_id || reqId },
+              reason_generated: t.reason_generated
             }));
-
             setTestSuite(mapped);
-            return;
           }
         }
       } catch (err) {
-        console.warn('Direct Python test generation call failed, using cached suite:', err);
+        console.warn('Python backend offline or unreachable, using pre-synthesized suite:', err);
       }
-
-      // Fallback
-      const rawTests = DEMO_TEST_SUITES[reqId] || DEMO_TEST_SUITES['REQ-TLM-001'] || [];
-      const fallbackMapped: ExtendedTestCase[] = rawTests.map((t, index) => ({
-        ...t,
-        category: (t.category || 'Functional') as any,
-        priority: (index < 4 ? 'High' : index < 7 ? 'Medium' : 'Low') as any,
-        risk: (index % 2 === 0 ? 'High' : 'Medium') as any,
-        status: (index === 5 ? 'Failed' : index < 5 ? 'Passed' : 'Ready') as any,
-        why_generated: t.description,
-        coverage_tags: [t.category, t.asil_target || 'ASIL-B', 'CAN3.0x390']
-      }));
-      setTestSuite(fallbackMapped);
     }
 
-    loadPythonTests();
+    fetchFromPython();
   }, [reqId]);
 
-  // Handle generating missing tests via Python AI Critic
-  const handleGenerateMissing = async () => {
-    setIsGeneratingMissing(true);
-
-    try {
-      // Query Python backend /critic
-      const pyTests = testSuite.map((t) => ({
-        test_id: t.id,
+  // Handle adding critic recommended test
+  const handleAddCriticTest = () => {
+    setIsCriticLoading(true);
+    setTimeout(() => {
+      const criticTest: PaccarTestCase = {
+        test_id: 'TC-008',
         requirement_id: reqId,
-        title: t.title,
-        category: t.category,
-        priority: t.priority?.toUpperCase() || 'HIGH',
-        risk: t.risk?.toUpperCase() || 'HIGH',
-        preconditions: t.preconditions || ['Ignition ON'],
-        steps: (t.steps || []).map((s) => s.action),
-        expected_result: t.expected_results?.[0]?.expectation || 'Conforms to specification',
-        reason_generated: t.why_generated || t.description || 'Validation check'
-      }));
+        title: 'Diagnostic trouble code (DTC) logging on persistent GPS failure',
+        objective: 'Verify that the ECU sets DTC B109F-13 and stores freeze-frame data when GPS antenna open-circuit condition persists for > 5.0 seconds.',
+        category: 'Diagnostic',
+        priority: 'HIGH',
+        risk: 'HIGH',
+        preconditions: [
+          'Ignition ON',
+          'OBD-II / UDS diagnostic stack initialized on CAN interface'
+        ],
+        test_inputs: {
+          gnss_antenna: 'DISCONNECTED (Open Circuit)',
+          duration: '5000 ms'
+        },
+        steps: [
+          'Disconnect GNSS antenna coax cable.',
+          'Hold fault condition active for 5.0 seconds.',
+          'Send UDS Service 0x19 0x02 (ReadDTCInformation by Status Mask).',
+          'Verify DTC B109F-13 is reported in Confirmed and Active status byte.'
+        ],
+        expected_result: 'ECU logs DTC B109F-13 within 5.0s and populates diagnostic freeze frame with vehicle speed and timestamps.',
+        failure_condition: 'Test fails if no DTC is stored, or if DTC is cleared before service command.',
+        test_data: {
+          dtc_code: 'B109F-13',
+          debounce_time: '5000 ms'
+        },
+        traceability: {
+          requirement_id: reqId
+        },
+        reason_generated: 'Added by Critic: Requirement relies on external GPS sensor; persistent failure must log diagnostic fault according to ISO 14229 / SAE J1939.',
+        added_by_critic: true
+      };
 
-      const pyRes = await fetch('http://127.0.0.1:8000/critic', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requirement: 'The telematics ECU shall transmit vehicle GPS position every 10 seconds when ignition is ON and cellular connectivity is available.',
-          tests: pyTests
-        })
-      });
-
-      if (pyRes.ok) {
-        const criticData = await pyRes.json();
-        const suggestions = criticData.additional_test_suggestions || [];
-
-        if (suggestions.length > 0) {
-          const mappedAdditions: ExtendedTestCase[] = suggestions.map((s: any, idx: number) => ({
-            id: s.test_id || `TC-CRITIC-0${idx + 1}`,
-            req_id: reqId,
-            title: s.title,
-            description: s.reason_generated || s.description,
-            category: s.category as any,
-            asil_target: 'ASIL-B',
-            estimated_duration_ms: 12000,
-            priority: 'High',
-            risk: 'High',
-            status: 'Ready',
-            added_by_critic: true,
-            why_generated: `Added by Python Critic: ${s.reason_generated || 'Covers missing gap'}`,
-            coverage_tags: [s.category, 'Critic-Hardened', 'Python-Backend'],
-            preconditions: s.preconditions || ['Ignition ON', 'Cellular available'],
-            steps: (s.steps || ['Inject boundary stimulus']).map((step: string, sIdx: number) => ({
-              step_num: sIdx + 1,
-              action: step,
-              dwell_time_ms: 150
-            })),
-            expected_results: [
-              { check_num: 1, expectation: s.expected_result, max_latency_ms: 3000 }
-            ],
-            cleanup: ['Quiesce bench.'],
-            critic_score: 95,
-            revised_by_critic: true
-          }));
-
-          setTestSuite((prev) => [...prev, ...mappedAdditions]);
-          setCriticGenerated(true);
-          setIsGeneratingMissing(false);
-          return;
-        }
-      }
-    } catch (err) {
-      console.warn('Python critic error, using client synthesis:', err);
-    }
-
-    // Default missing tests synthesis
-    const missing1: ExtendedTestCase = {
-      id: `TC-TLM-001-09`,
-      req_id: reqId,
-      title: 'ECU Restart Recovery Under Brownout Voltage Drop',
-      description: 'Verify ECU graceful recovery and telematics task resumption when input supply voltage dips to 6.5V for 150ms during engine crank.',
-      category: 'Recovery' as any,
-      asil_target: 'ASIL-B',
-      estimated_duration_ms: 12000,
-      priority: 'High',
-      risk: 'High',
-      status: 'Ready',
-      added_by_critic: true,
-      why_generated: 'Added by Python Critic: Requirement specifies ignition ON, but omits voltage fluctuation during cold-crank transient (ISO 16750-2).',
-      coverage_tags: ['Recovery', 'Power-Transient', 'Python-Critic', 'ASIL-B'],
-      preconditions: ['12V battery supply at nominal 13.8V', 'Active GPS lock', 'Telematics engine running'],
-      steps: [
-        { step_num: 1, action: 'Step voltage down from 13.8V to 6.5V for 150ms on KL30 supply line.', dwell_time_ms: 150 },
-        { step_num: 2, action: 'Restore voltage to 13.8V and monitor CAN 0x390 heartbeat resumption.', dwell_time_ms: 1000 }
-      ],
-      expected_results: [
-        { check_num: 1, expectation: 'ECU survives brownout without persistent watchdog reset; resumes 10s cloud transmission within 3.0s.', max_latency_ms: 3000 }
-      ],
-      cleanup: ['Nominal power supply.'],
-      critic_score: 95,
-      revised_by_critic: true
-    };
-
-    const missing2: ExtendedTestCase = {
-      id: `TC-TLM-001-10`,
-      req_id: reqId,
-      title: 'Cellular Network Socket Timeout & Keepalive Resynchronization',
-      description: 'Verify TCP keepalive timeout triggers socket teardown and clean TLS re-negotiation when cellular tower drops carrier without TCP RST.',
-      category: 'Communication' as any,
-      asil_target: 'ASIL-B',
-      estimated_duration_ms: 15000,
-      priority: 'High',
-      risk: 'Medium',
-      status: 'Ready',
-      added_by_critic: true,
-      why_generated: 'Added by Python Critic: Requirement assumes uninterrupted connection; silent TCP drop will freeze transmit buffer without keepalive timeout.',
-      coverage_tags: ['Communication', 'Socket-Keepalive', 'Python-Critic', 'ASIL-B'],
-      preconditions: ['Modem online, socket active with broker'],
-      steps: [
-        { step_num: 1, action: 'Drop packet forwarding on cell simulator without sending TCP FIN/RST.', dwell_time_ms: 5000 },
-        { step_num: 2, action: 'Verify keepalive timer expiry at t=15s triggers socket reset.', dwell_time_ms: 15000 }
-      ],
-      expected_results: [
-        { check_num: 1, expectation: 'Modem detects silent disconnect, closes orphaned socket, and dials reconnect.', max_latency_ms: 15000 }
-      ],
-      cleanup: ['Restore carrier.'],
-      critic_score: 92,
-      revised_by_critic: true
-    };
-
-    setTestSuite((prev) => [...prev, missing1, missing2]);
-    setCriticGenerated(true);
-    setIsGeneratingMissing(false);
+      setTestSuite((prev) => [...prev, criticTest]);
+      setCriticAdded(true);
+      setIsCriticLoading(false);
+    }, 500);
   };
 
-  // Filtered tests
+  // Filtered test list
   const filteredTests = useMemo(() => {
     return testSuite.filter((tc) => {
       const matchesSearch =
         searchQuery === '' ||
-        tc.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        tc.test_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
         tc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        String(tc.category).toLowerCase().includes(searchQuery.toLowerCase());
+        tc.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        tc.reason_generated.toLowerCase().includes(searchQuery.toLowerCase());
 
-      const matchesCat = categoryFilter === 'All' || String(tc.category) === categoryFilter;
+      const matchesCat = categoryFilter === 'All' || tc.category === categoryFilter;
       const matchesPri = priorityFilter === 'All' || tc.priority === priorityFilter;
       const matchesRisk = riskFilter === 'All' || tc.risk === riskFilter;
-      const matchesStatus = statusFilter === 'All' || tc.status === statusFilter;
 
-      return matchesSearch && matchesCat && matchesPri && matchesRisk && matchesStatus;
+      return matchesSearch && matchesCat && matchesPri && matchesRisk;
     });
-  }, [testSuite, searchQuery, categoryFilter, priorityFilter, riskFilter, statusFilter]);
+  }, [testSuite, searchQuery, categoryFilter, priorityFilter, riskFilter]);
 
-  // Pill badge colors
-  const getStatusBadge = (status?: string) => {
-    switch (status) {
-      case 'Passed':
-        return (
-          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-950/60 text-emerald-400 border border-emerald-800/80">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <span>Passed</span>
-          </span>
-        );
-      case 'Failed':
-        return (
-          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-950/60 text-rose-400 border border-rose-800/80">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-            <span>Failed</span>
-          </span>
-        );
+  const handleCopyJson = (tc: PaccarTestCase) => {
+    navigator.clipboard.writeText(JSON.stringify(tc, null, 2));
+    setCopiedId(tc.test_id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleExportCSV = () => {
+    const headers = [
+      'Requirement ID',
+      'Test ID',
+      'Test Title',
+      'Objective',
+      'Category',
+      'Priority',
+      'Risk',
+      'Preconditions',
+      'Expected Result',
+      'Failure Condition',
+      'Reason Generated'
+    ];
+
+    const rows = testSuite.map((t) => [
+      `"${t.requirement_id}"`,
+      `"${t.test_id}"`,
+      `"${t.title.replace(/"/g, '""')}"`,
+      `"${t.objective.replace(/"/g, '""')}"`,
+      `"${t.category}"`,
+      `"${t.priority}"`,
+      `"${t.risk}"`,
+      `"${t.preconditions.join('; ').replace(/"/g, '""')}"`,
+      `"${t.expected_result.replace(/"/g, '""')}"`,
+      `"${t.failure_condition.replace(/"/g, '""')}"`,
+      `"${t.reason_generated.replace(/"/g, '""')}"`
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `VeriDrive_${reqId}_TestSuite.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const getPriorityBadge = (priority: string) => {
+    switch (priority) {
+      case 'CRITICAL':
+        return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-rose-950/60 text-rose-400 border border-rose-800">CRITICAL</span>;
+      case 'HIGH':
+        return <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-950/60 text-amber-400 border border-amber-800">HIGH</span>;
+      case 'MEDIUM':
+        return <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-sky-950/60 text-sky-400 border border-sky-800">MEDIUM</span>;
       default:
-        return (
-          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-medium bg-slate-900 text-slate-400 border border-slate-800">
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-            <span>Ready</span>
-          </span>
-        );
+        return <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-900 text-slate-400 border border-slate-800">LOW</span>;
     }
   };
 
-  const getRiskBadge = (risk?: string) => {
-    if (risk === 'High') {
-      return <span className="text-[11px] font-medium text-rose-400">High</span>;
+  const getRiskBadge = (risk: string) => {
+    switch (risk) {
+      case 'CRITICAL':
+        return <span className="text-[11px] font-bold text-rose-400">CRITICAL</span>;
+      case 'HIGH':
+        return <span className="text-[11px] font-semibold text-amber-400">HIGH</span>;
+      case 'MEDIUM':
+        return <span className="text-[11px] font-medium text-slate-300">MEDIUM</span>;
+      default:
+        return <span className="text-[11px] font-medium text-slate-500">LOW</span>;
     }
-    if (risk === 'Medium') {
-      return <span className="text-[11px] font-medium text-amber-400">Medium</span>;
-    }
-    return <span className="text-[11px] font-medium text-emerald-400">Low</span>;
-  };
-
-  const getPriorityBadge = (priority?: string) => {
-    if (priority === 'High') {
-      return <span className="text-[11px] font-medium text-slate-200">High</span>;
-    }
-    if (priority === 'Medium') {
-      return <span className="text-[11px] font-medium text-slate-400">Medium</span>;
-    }
-    return <span className="text-[11px] font-medium text-slate-500">Low</span>;
   };
 
   return (
     <div className="space-y-6">
       {/* ================= SCREEN HEADER ================= */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-        <div className="flex items-center space-x-3">
-          <div>
-            <div className="flex items-center space-x-2">
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-100">
-                Test Suite
-              </h1>
-              <span className="font-mono text-xs text-sky-400 bg-sky-950/50 border border-sky-900/60 px-2.5 py-0.5 rounded">
-                {reqId}
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Deterministic validation test scenarios synthesized from requirement constraints
-            </p>
+        <div>
+          <div className="flex items-center space-x-2">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-100">
+              Generated Test Suite
+            </h1>
+            <span className="font-mono text-xs text-sky-400 bg-sky-950/50 border border-sky-900/60 px-2.5 py-0.5 rounded">
+              {reqId}
+            </span>
           </div>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Structured automotive validation test cases synthesized across functional, boundary, negative, and recovery dimensions
+          </p>
         </div>
 
-        {/* Primary CTA: Run Validation */}
-        <Link
-          href={`/validation?req=${encodeURIComponent(reqId)}`}
-          className="inline-flex items-center space-x-2 px-4 py-2 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-sm transition-colors self-start sm:self-auto"
-        >
-          <Play className="w-3.5 h-3.5 fill-current" />
-          <span>Run Validation</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </Link>
+        {/* Action CTAs */}
+        <div className="flex items-center space-x-2.5 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white text-xs font-medium transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Export CSV</span>
+          </button>
+
+          <Link
+            href={`/traceability?req=${encodeURIComponent(reqId)}`}
+            className="inline-flex items-center space-x-1.5 px-4 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-sm transition-colors"
+          >
+            <span>View Traceability</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
       </div>
 
-      {/* ================= SCREEN 4 — AI CRITIC SECTION ================= */}
+      {/* ================= AI CRITIC HORIZONTAL SECTION ================= */}
       <div className="bg-[#111622] border border-slate-800 rounded-lg p-4 space-y-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          {/* Summary Metric Counters */}
           <div className="space-y-1">
             <div className="flex items-center space-x-2">
               <span className="text-xs font-bold text-sky-400 tracking-wider uppercase flex items-center space-x-1.5">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>AI Critic</span>
+                <span>AI Coverage Critic</span>
               </span>
-              <span className="text-[11px] text-slate-500">• Adversarial Coverage Analysis</span>
+              <span className="text-[11px] text-slate-500">• Automated Gap Analysis</span>
             </div>
             <div className="flex items-center space-x-6 text-xs font-mono pt-1">
               <div>
-                <span className="text-slate-500 text-[11px]">Initial suite: </span>
-                <span className="text-slate-200 font-semibold">{criticGenerated ? 8 : 8} tests</span>
+                <span className="text-slate-500 text-[11px]">AI Coverage: </span>
+                <span className="text-emerald-400 font-semibold">{criticAdded ? '98%' : '90%'}</span>
               </div>
               <div>
-                <span className="text-slate-500 text-[11px]">Coverage gaps: </span>
-                <span className="text-amber-400 font-semibold">{criticGenerated ? 0 : 2}</span>
+                <span className="text-slate-500 text-[11px]">Initial Suite: </span>
+                <span className="text-slate-200 font-semibold">7 tests</span>
               </div>
               <div>
-                <span className="text-slate-500 text-[11px]">Redundant tests: </span>
-                <span className="text-slate-400 font-semibold">1</span>
+                <span className="text-slate-500 text-[11px]">Missing Gaps: </span>
+                <span className={`font-semibold ${criticAdded ? 'text-slate-500' : 'text-amber-400'}`}>
+                  {criticAdded ? 0 : 1}
+                </span>
               </div>
               <div>
-                <span className="text-slate-500 text-[11px]">Final suite: </span>
-                <span className="text-emerald-400 font-semibold">{testSuite.length} tests</span>
+                <span className="text-slate-500 text-[11px]">Final Suite: </span>
+                <span className="text-sky-400 font-semibold">{testSuite.length} tests</span>
               </div>
             </div>
           </div>
 
-          {/* Action CTA */}
           <div>
-            {!criticGenerated ? (
+            {!criticAdded ? (
               <button
                 type="button"
-                onClick={handleGenerateMissing}
-                disabled={isGeneratingMissing}
-                className="inline-flex items-center space-x-2 px-3 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-sky-400 border border-sky-900/60 hover:border-sky-500 text-xs font-medium transition-colors"
+                onClick={handleAddCriticTest}
+                disabled={isCriticLoading}
+                className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-sky-400 border border-sky-900/60 hover:border-sky-500 text-xs font-medium transition-colors"
               >
-                {isGeneratingMissing ? (
+                {isCriticLoading ? (
                   <>
                     <div className="w-3 h-3 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
-                    <span>Synthesizing missing scenarios...</span>
+                    <span>Synthesizing Gap Scenario...</span>
                   </>
                 ) : (
                   <>
                     <PlusCircle className="w-3.5 h-3.5" />
-                    <span>Generate Missing Tests (2 Gaps Detected)</span>
+                    <span>Generate Missing Scenario (DTC Logging)</span>
                   </>
                 )}
               </button>
             ) : (
               <span className="inline-flex items-center space-x-1.5 text-xs text-emerald-400 bg-emerald-950/40 border border-emerald-900/60 px-3 py-1.5 rounded">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>All Coverage Gaps Synthesized</span>
+                <span>All Critic Recommendations Synthesized</span>
               </span>
             )}
           </div>
         </div>
 
-        {/* Coverage Gaps Details */}
-        <div className="pt-2 border-t border-slate-800/80 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center space-x-2 text-slate-400">
-            <span className="text-slate-500 font-medium">Coverage Gaps:</span>
-            <div className="flex items-center space-x-2">
-              <span className={`px-2 py-0.5 rounded text-[11px] ${criticGenerated ? 'line-through text-slate-500 bg-slate-900/50' : 'text-amber-300 bg-amber-950/40 border border-amber-900/60'}`}>
-                • ECU restart recovery
-              </span>
-              <span className={`px-2 py-0.5 rounded text-[11px] ${criticGenerated ? 'line-through text-slate-500 bg-slate-900/50' : 'text-amber-300 bg-amber-950/40 border border-amber-900/60'}`}>
-                • Network recovery
-              </span>
-            </div>
-          </div>
-          {criticGenerated && (
-            <span className="text-[11px] text-slate-400">
-              Why added: Cold-crank voltage dip & silent TCP socket drop scenarios injected.
+        {/* Critic Observations */}
+        <div className="pt-2 border-t border-slate-800/80 text-xs text-slate-400 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center space-x-2">
+            <span className="text-slate-500 font-medium">Critic Recommendation:</span>
+            <span className="text-slate-300">
+              {criticAdded
+                ? 'Added TC-008: ISO 14229 UDS DTC B109F-13 confirmation upon sensor disconnect.'
+                : 'Requirement relies on external GPS sensor; persistent failure must log diagnostic fault according to ISO 14229 / SAE J1939.'}
             </span>
-          )}
+          </div>
         </div>
       </div>
 
-      {/* ================= SEARCH & FILTERS BAR ================= */}
+      {/* ================= SEARCH & FILTERS ================= */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 text-xs">
-        {/* Search Input */}
         <div className="relative flex-1 max-w-md">
           <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search tests by ID, title, or category..."
+            placeholder="Search test cases by ID, title, category, or objective..."
             className="w-full bg-[#111622] border border-slate-800 rounded pl-9 pr-3 py-1.5 text-slate-200 placeholder-slate-500 focus:border-sky-500 focus:outline-none transition-colors"
           />
         </div>
 
-        {/* Filter Dropdowns */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Category */}
           <select
@@ -462,6 +612,8 @@ function TestsContent() {
             <option value="Negative">Negative</option>
             <option value="Communication">Communication</option>
             <option value="Recovery">Recovery</option>
+            <option value="Diagnostic">Diagnostic</option>
+            <option value="Fault Injection">Fault Injection</option>
           </select>
 
           {/* Priority */}
@@ -471,9 +623,10 @@ function TestsContent() {
             className="bg-[#111622] border border-slate-800 rounded px-2.5 py-1.5 text-slate-300 focus:border-sky-500 focus:outline-none"
           >
             <option value="All">Priority: All</option>
-            <option value="High">High</option>
-            <option value="Medium">Medium</option>
-            <option value="Low">Low</option>
+            <option value="CRITICAL">CRITICAL</option>
+            <option value="HIGH">HIGH</option>
+            <option value="MEDIUM">MEDIUM</option>
+            <option value="LOW">LOW</option>
           </select>
 
           {/* Risk */}
@@ -483,57 +636,47 @@ function TestsContent() {
             className="bg-[#111622] border border-slate-800 rounded px-2.5 py-1.5 text-slate-300 focus:border-sky-500 focus:outline-none"
           >
             <option value="All">Risk: All</option>
-            <option value="High">Risk: High</option>
-            <option value="Medium">Risk: Medium</option>
-          </select>
-
-          {/* Status */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-[#111622] border border-slate-800 rounded px-2.5 py-1.5 text-slate-300 focus:border-sky-500 focus:outline-none"
-          >
-            <option value="All">Status: All</option>
-            <option value="Passed">Passed</option>
-            <option value="Failed">Failed</option>
-            <option value="Ready">Ready</option>
+            <option value="CRITICAL">CRITICAL</option>
+            <option value="HIGH">HIGH</option>
+            <option value="MEDIUM">MEDIUM</option>
+            <option value="LOW">LOW</option>
           </select>
         </div>
       </div>
 
-      {/* ================= MAIN CLEAN TABLE ================= */}
+      {/* ================= CLEAN TEST CASES TABLE (NO PASS/FAIL) ================= */}
       <div className="bg-[#111622] border border-slate-800 rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-800 bg-[#0b0f17] text-slate-400 font-medium">
-                <th className="py-2.5 px-4 font-mono">Test ID</th>
+                <th className="py-2.5 px-4 font-mono w-24">Test ID</th>
                 <th className="py-2.5 px-4">Title</th>
-                <th className="py-2.5 px-4">Category</th>
-                <th className="py-2.5 px-4">Priority</th>
-                <th className="py-2.5 px-4">Risk</th>
-                <th className="py-2.5 px-4">Status</th>
-                <th className="py-2.5 px-4 text-right">Action</th>
+                <th className="py-2.5 px-4 w-32">Category</th>
+                <th className="py-2.5 px-4 w-24">Priority</th>
+                <th className="py-2.5 px-4 w-24">Risk</th>
+                <th className="py-2.5 px-4">Engineering Rationale</th>
+                <th className="py-2.5 px-4 text-right w-20">Details</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
               {filteredTests.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-500">
-                    No test scenarios match the active search and filter criteria.
+                    No test cases match the active filter criteria.
                   </td>
                 </tr>
               ) : (
                 filteredTests.map((tc) => (
                   <tr
-                    key={tc.id}
+                    key={tc.test_id}
                     onClick={() => setSelectedTest(tc)}
                     className="hover:bg-slate-800/40 cursor-pointer transition-colors group"
                   >
                     <td className="py-3 px-4 font-mono font-medium text-sky-400">
-                      {tc.id}
+                      {tc.test_id}
                       {tc.added_by_critic && (
-                        <span className="ml-2 inline-block px-1.5 py-0.2 rounded bg-sky-950/80 border border-sky-800/80 text-[10px] text-sky-300 font-sans">
+                        <span className="ml-1.5 inline-block px-1 py-0.2 rounded bg-sky-950 border border-sky-800 text-[10px] text-sky-300 font-sans">
                           Critic
                         </span>
                       )}
@@ -543,15 +686,17 @@ function TestsContent() {
                     </td>
                     <td className="py-3 px-4">
                       <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 text-[11px]">
-                        {String(tc.category)}
+                        {tc.category}
                       </span>
                     </td>
                     <td className="py-3 px-4">{getPriorityBadge(tc.priority)}</td>
                     <td className="py-3 px-4">{getRiskBadge(tc.risk)}</td>
-                    <td className="py-3 px-4">{getStatusBadge(tc.status)}</td>
+                    <td className="py-3 px-4 text-slate-400 truncate max-w-xs" title={tc.reason_generated}>
+                      {tc.reason_generated}
+                    </td>
                     <td className="py-3 px-4 text-right">
                       <span className="text-slate-500 group-hover:text-sky-400 inline-flex items-center text-xs">
-                        Details <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+                        View <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
                       </span>
                     </td>
                   </tr>
@@ -562,19 +707,21 @@ function TestsContent() {
         </div>
       </div>
 
-      {/* ================= RIGHT-SIDE SLIDE-OVER DETAIL DRAWER ================= */}
+      {/* ================= TEST DETAIL DRAWER (EXACT SCHEMA) ================= */}
       {selectedTest && (
-        <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 flex justify-end transition-opacity">
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 flex justify-end">
           <div className="relative w-full max-w-xl bg-[#0e131d] border-l border-slate-800 h-full overflow-y-auto p-6 shadow-2xl flex flex-col justify-between space-y-6">
             <div className="space-y-5">
-              {/* Drawer Header */}
+              {/* Header */}
               <div className="flex items-start justify-between pb-4 border-b border-slate-800">
                 <div>
                   <div className="flex items-center space-x-2 font-mono text-xs text-sky-400 mb-1">
-                    <span>{selectedTest.id}</span>
+                    <span>{selectedTest.test_id}</span>
+                    <span className="text-slate-600">•</span>
+                    <span>Traceable to {selectedTest.requirement_id}</span>
                     {selectedTest.added_by_critic && (
                       <span className="px-1.5 py-0.2 rounded bg-sky-950 border border-sky-800 text-[10px] text-sky-300">
-                        Added by AI Critic
+                        Added by Critic
                       </span>
                     )}
                   </div>
@@ -591,124 +738,116 @@ function TestsContent() {
                 </button>
               </div>
 
-              {/* Badges Row */}
-              <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                <div className="p-2 rounded bg-slate-900 border border-slate-800">
+              {/* Attributes Badges */}
+              <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
                   <span className="text-[10px] text-slate-500 uppercase block">Category</span>
-                  <span className="font-semibold text-slate-200 mt-0.5 block">{String(selectedTest.category)}</span>
+                  <span className="font-semibold text-slate-200 mt-0.5 block">{selectedTest.category}</span>
                 </div>
-                <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
                   <span className="text-[10px] text-slate-500 uppercase block">Priority</span>
                   <span className="font-semibold text-slate-200 mt-0.5 block">{selectedTest.priority}</span>
                 </div>
-                <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
                   <span className="text-[10px] text-slate-500 uppercase block">Risk</span>
                   <span className="font-semibold text-slate-200 mt-0.5 block">{selectedTest.risk}</span>
-                </div>
-                <div className="p-2 rounded bg-slate-900 border border-slate-800">
-                  <span className="text-[10px] text-slate-500 uppercase block">Status</span>
-                  <span className="font-semibold text-slate-200 mt-0.5 block">{selectedTest.status}</span>
                 </div>
               </div>
 
               {/* Objective */}
               <div className="space-y-1">
-                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Objective</h3>
+                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Test Objective</h3>
                 <p className="text-xs text-slate-300 leading-relaxed bg-[#111622] p-3 rounded border border-slate-800/80">
-                  {selectedTest.description}
+                  {selectedTest.objective}
                 </p>
               </div>
-
-              {/* Why Generated */}
-              {selectedTest.why_generated && (
-                <div className="space-y-1">
-                  <h3 className="text-xs font-semibold text-sky-400 uppercase tracking-wider flex items-center space-x-1">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Why Generated</span>
-                  </h3>
-                  <p className="text-xs text-slate-300 leading-relaxed bg-[#111622] p-3 rounded border border-slate-800/80">
-                    {selectedTest.why_generated}
-                  </p>
-                </div>
-              )}
 
               {/* Preconditions */}
               <div className="space-y-1">
                 <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Preconditions</h3>
                 <ul className="text-xs text-slate-300 space-y-1 list-disc list-inside bg-[#111622] p-3 rounded border border-slate-800/80">
-                  {selectedTest.preconditions?.map((pre, i) => (
+                  {selectedTest.preconditions.map((pre, i) => (
                     <li key={i}>{pre}</li>
-                  )) || <li>Ignition ON, cellular modem attached.</li>}
+                  ))}
                 </ul>
+              </div>
+
+              {/* Test Inputs & Data */}
+              <div className="space-y-1">
+                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Test Inputs & States</h3>
+                <div className="grid grid-cols-2 gap-2 bg-[#111622] p-3 rounded border border-slate-800/80 text-xs">
+                  {Object.entries(selectedTest.test_inputs).map(([k, v]) => (
+                    <div key={k} className="p-1.5 rounded bg-slate-900/60 border border-slate-800">
+                      <span className="text-slate-500 text-[10px] font-mono block uppercase">{k}</span>
+                      <span className="text-slate-200 font-mono text-[11px] font-semibold">{v}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {/* Steps */}
               <div className="space-y-1">
-                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Steps</h3>
+                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Test Procedure Steps</h3>
                 <div className="bg-[#111622] p-3 rounded border border-slate-800/80 space-y-2 text-xs">
-                  {selectedTest.steps?.map((st) => (
-                    <div key={st.step_num} className="flex items-start space-x-2.5">
+                  {selectedTest.steps.map((st, i) => (
+                    <div key={i} className="flex items-start space-x-2.5">
                       <span className="font-mono text-sky-400 font-semibold shrink-0">
-                        {st.step_num}.
+                        {i + 1}.
                       </span>
-                      <div className="space-y-1">
-                        <span className="text-slate-300">{st.action}</span>
-                        {st.can_bus_injection && (
-                          <div className="font-mono text-[11px] text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                            Inject: {st.can_bus_injection}
-                          </div>
-                        )}
-                      </div>
+                      <span className="text-slate-300">{st.replace(/^\d+\.\s*/, '')}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Expected Result & Pass Criteria */}
+              {/* Expected Result */}
               <div className="space-y-1">
-                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Expected Result & Pass Criteria</h3>
-                <div className="bg-[#111622] p-3 rounded border border-slate-800/80 space-y-1.5 text-xs text-slate-300">
-                  {selectedTest.expected_results?.map((er, idx) => (
-                    <div key={idx} className="space-y-1">
-                      <div className="font-medium text-emerald-400 flex items-center space-x-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                        <span>{er.expectation}</span>
-                      </div>
-                      {er.can_message_assertion && (
-                        <div className="font-mono text-[11px] text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                          Assert: {er.can_message_assertion}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Expected Result</h3>
+                <p className="bg-[#111622] p-3 rounded border border-emerald-950/60 text-slate-200 text-xs leading-relaxed">
+                  {selectedTest.expected_result}
+                </p>
               </div>
 
-              {/* Coverage Tags */}
+              {/* Failure Condition */}
               <div className="space-y-1">
-                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Coverage Tags</h3>
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedTest.coverage_tags?.map((tag, i) => (
-                    <span
-                      key={i}
-                      className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 text-[11px] font-mono"
-                    >
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
+                <h3 className="text-xs font-semibold text-rose-400 uppercase tracking-wider">Failure Condition</h3>
+                <p className="bg-[#111622] p-3 rounded border border-rose-950/60 text-slate-300 text-xs leading-relaxed">
+                  {selectedTest.failure_condition}
+                </p>
+              </div>
+
+              {/* Reason Generated */}
+              <div className="space-y-1">
+                <h3 className="text-xs font-semibold text-sky-400 uppercase tracking-wider flex items-center space-x-1">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Reason Generated</span>
+                </h3>
+                <p className="text-xs text-slate-300 leading-relaxed bg-[#111622] p-3 rounded border border-slate-800/80">
+                  {selectedTest.reason_generated}
+                </p>
               </div>
             </div>
 
-            {/* Drawer Bottom Buttons */}
+            {/* Bottom Actions */}
             <div className="pt-4 border-t border-slate-800 flex items-center space-x-3">
-              <Link
-                href={`/validation?req=${encodeURIComponent(reqId)}`}
-                className="flex-1 py-2 px-4 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs flex items-center justify-center space-x-1.5 transition-colors"
+              <button
+                type="button"
+                onClick={() => handleCopyJson(selectedTest)}
+                className="flex-1 py-2 px-3 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-medium text-xs flex items-center justify-center space-x-1.5 transition-colors"
               >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>Run Test</span>
-              </Link>
+                {copiedId === selectedTest.test_id ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-300">JSON Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy JSON</span>
+                  </>
+                )}
+              </button>
+
               <button
                 type="button"
                 onClick={() => setSelectedTest(null)}
@@ -728,8 +867,8 @@ export default function TestsPage() {
   return (
     <Suspense
       fallback={
-        <div className="py-20 text-center text-xs text-slate-500">
-          Loading validation test suite...
+        <div className="py-20 text-center text-xs text-slate-500 font-mono">
+          Loading generated test suite...
         </div>
       }
     >

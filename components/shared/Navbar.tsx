@@ -13,7 +13,7 @@ export const Navbar: React.FC = () => {
     { href: '/analyze', label: 'Analyze' },
     { href: '/tests', label: 'Test Suite' },
     { href: '/traceability', label: 'Traceability' },
-    { href: '/validation', label: 'Validation' },
+    { href: '/export', label: 'Export' },
     { href: '/settings', label: 'Settings' }
   ];
 

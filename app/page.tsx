@@ -44,22 +44,22 @@ export default function HomePage() {
 
   const recentAnalyses = [
     {
-      id: 'REQ-TLM-001',
+      id: 'REQ-001',
       component: 'Telematics Control Unit (TCU)',
-      tests: 8,
-      status: 'Verified'
+      tests: 7,
+      category: 'Functional + Timing'
     },
     {
       id: 'REQ-BMS-042',
       component: 'Battery Management System (BMS)',
       tests: 10,
-      status: 'Verified'
+      category: 'Safety-Critical'
     },
     {
       id: 'REQ-ACC-104',
       component: 'ADAS Domain Controller',
       tests: 9,
-      status: 'Verified'
+      category: 'Communication'
     }
   ];
 
@@ -148,9 +148,8 @@ export default function HomePage() {
 
               <div className="flex items-center space-x-4">
                 <span className="text-xs text-slate-400 font-mono">{item.tests} tests</span>
-                <span className="inline-flex items-center space-x-1 text-[11px] font-medium text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-900/50">
-                  <CheckCircle2 className="w-3 h-3" />
-                  <span>{item.status}</span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium text-sky-400 bg-sky-950/60 border border-sky-900/50">
+                  <span>{item.category}</span>
                 </span>
                 <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 transition-colors" />
               </div>
