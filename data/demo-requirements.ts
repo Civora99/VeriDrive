@@ -2,6 +2,64 @@ import { StructuredRequirement } from '../lib/types/requirements';
 
 export const DEMO_REQUIREMENTS: StructuredRequirement[] = [
   {
+    id: 'REQ-TLM-001',
+    title: 'Periodic Vehicle GPS Position Cloud Telemetry Transmission',
+    raw_text: 'The telematics ECU shall transmit the vehicle GPS position to the cloud every 10 seconds when ignition is ON and a valid cellular connection is available.',
+    ecu: 'TCU (Telematics Control Unit)',
+    asil_level: 'ASIL-B',
+    category: 'Communication',
+    inputs: [
+      { name: 'Ignition_State_KL15', type: 'boolean (12V)', interface_bus: 'Hardwired 12V / CAN_Body', description: 'Vehicle ignition position (1=ON, 0=OFF)' },
+      { name: 'GNSS_Position_Data', type: 'NMEA-0183 coordinate sentence', interface_bus: 'Internal UART/SPI', description: 'Latitude, longitude, altitude, heading, HDOP' },
+      { name: 'Cellular_Network_State', type: 'enum (CONNECTED, DISCONNECTED, ROAMING)', interface_bus: 'Modem AT Command Interface', description: 'LTE-M/4G packet network registration' }
+    ],
+    outputs: [
+      { name: 'Cloud_GPS_Telemetry_Payload', type: 'Protobuf / JSON over MQTT', interface_bus: 'Cellular LTE / TLS 1.3', description: 'Periodic encrypted GPS coordinates uplink to OEM cloud broker' },
+      { name: 'Telemetry_Transmit_Status (0x390)', type: 'CAN Frame (100ms)', interface_bus: 'CAN_Body', description: 'TCU uplink transmission handshake and buffer status' }
+    ],
+    triggers: [
+      'Periodic timer tick expired (T = 10.0 seconds)',
+      'Ignition transition from OFF to ON',
+      'Cellular reconnection trigger after network outage'
+    ],
+    conditions: [
+      'Ignition switch KL15 is asserted (12V active)',
+      'Valid cellular carrier connection and OEM APN IP established',
+      'Vehicle supply voltage between 9.0V and 16.0V DC'
+    ],
+    timing_constraints: [
+      { metric: 'Periodic Telemetry Reporting Cadence', max_latency_ms: 10000, tolerance_ms: 500, notes: 'Broadcast interval: 10.0s ± 0.5s' },
+      { metric: 'Time to First Transmission after Boot', max_latency_ms: 15000, tolerance_ms: 1000, notes: 'Max 15s to establish cloud session after KL15' }
+    ],
+    interfaces: [
+      'Cellular LTE-M / 4G (ISO 17987 / 3GPP Rel 14)',
+      'Internal GNSS Receiver (GPS, GLONASS, Galileo)',
+      'CAN 2.0B Body Bus (500 kbps)',
+      'Cloud MQTT v5.0 over TLS 1.3'
+    ],
+    dependencies: [
+      'OEM Cloud Telemetry Ingestion Broker',
+      'Cellular Carrier SIM Subscription'
+    ],
+    failure_conditions: [
+      'Cellular dead-zone / out-of-coverage (buffer up to 1,000 coordinates)',
+      'GNSS antenna disconnect or fix loss',
+      'Stale coordinate freeze while vehicle is in motion'
+    ],
+    safety_related_wording: [
+      'Ensure high integrity of crash and telemetry positioning data.',
+      'Safe state: Store coordinates in non-volatile flash ring-buffer upon network drop.'
+    ],
+    diagnostic_implications: [
+      { dtc_code: 'B109F-13', service_id: '0x19', description: 'GPS Antenna Open Circuit or Disconnected', freeze_frame_required: true },
+      { dtc_code: 'U0423-82', service_id: '0x19', description: 'Invalid or Stale GNSS Coordinate Telemetry', freeze_frame_required: false }
+    ],
+    risk_score: 78,
+    confidence_score: 96,
+    created_at: new Date('2026-03-24T10:00:00Z').toISOString(),
+    status: 'Validated'
+  },
+  {
     id: 'REQ-BMS-042',
     title: 'High-Voltage Contactor Thermal Derating and Emergency Open Protection',
     raw_text: `The Battery Management System (BMS) shall monitor high-voltage battery cell temperatures across all 96 serial modules via CAN2_Powertrain and localized thermistor sensor chains.

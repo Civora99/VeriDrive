@@ -1,6 +1,283 @@
 import { TestCase, CriticReview, TestExecutionResult, SuiteExecutionSummary } from '../lib/types/tests';
 
 export const DEMO_TEST_SUITES: Record<string, TestCase[]> = {
+  'REQ-TLM-001': [
+    {
+      id: 'TC-TLM-001-01',
+      req_id: 'REQ-TLM-001',
+      title: 'Periodic Cloud Telemetry Transmission at 10-Second Cadence',
+      description: 'Verify that when ignition is ON and LTE connection is registered, Telematics ECU publishes vehicle GPS coordinates to cloud broker every 10.0 seconds.',
+      category: 'Happy-Path',
+      asil_target: 'ASIL-B',
+      estimated_duration_ms: 10000,
+      preconditions: [
+        'Ignition switch (KL15) is ON (12V active)',
+        'LTE-M/4G cellular module registered with OEM APN',
+        'GNSS receiver has 3D fix with HDOP < 1.5'
+      ],
+      steps: [
+        {
+          step_num: 1,
+          action: 'Initialize telematics bench with KL15 active, valid GPS lock, and established MQTT/TLS session.',
+          can_bus_injection: 'CAN3.0x390: 01 00 00 00 00 00 00 00',
+          dwell_time_ms: 100
+        },
+        {
+          step_num: 2,
+          action: 'Monitor cloud uplink broker message timestamps over a 60-second measurement window.',
+          dwell_time_ms: 60000
+        }
+      ],
+      expected_results: [
+        {
+          check_num: 1,
+          expectation: 'Cloud broker receives exactly 6 consecutive telemetry packets spaced at 10.0s ± 0.25s containing valid GPS fix.',
+          can_message_assertion: 'CAN3.0x390: Byte[0] == 0x01 (Uplink Active)',
+          max_latency_ms: 10000
+        }
+      ],
+      cleanup: ['Quiesce test bench.'],
+      critic_score: 96,
+      revised_by_critic: false,
+      capl_snippet: `on message CAN3::0x390 {
+  testStep("Telemetry Cadence", "Check 10s cloud transmission");
+  testStepPass("Payload received in nominal window");
+}`
+    },
+    {
+      id: 'TC-TLM-001-02',
+      req_id: 'REQ-TLM-001',
+      title: '10-Second Periodic Interval Jitter and Drift Boundary',
+      description: 'Verify clock jitter and network transmission latency do not exceed maximum permissible tolerance (±500ms) over 100 transmission cycles.',
+      category: 'Timing',
+      asil_target: 'ASIL-B',
+      estimated_duration_ms: 10000,
+      preconditions: [
+        'Bench synchronized with PTP/NTP network master clock',
+        'Cellular network emulator running simulated eNodeB with variable packet delay (20-80ms)'
+      ],
+      steps: [
+        {
+          step_num: 1,
+          action: 'Arm precision packet sniffer on cellular uplink interface.',
+          dwell_time_ms: 50
+        },
+        {
+          step_num: 2,
+          action: 'Record inter-arrival delta times for 100 periodic transmissions under varying background CPU load.',
+          dwell_time_ms: 100000
+        }
+      ],
+      expected_results: [
+        {
+          check_num: 1,
+          expectation: 'All packet transmission deltas fall strictly between 9,500ms and 10,500ms with no cumulative timer drift.',
+          max_latency_ms: 10500
+        }
+      ],
+      cleanup: ['Reset packet sniffer.'],
+      critic_score: 95,
+      revised_by_critic: true,
+      critic_feedback: {
+        critique_type: 'Timing',
+        comment: 'Critic tightened jitter boundary assertion from ±1000ms to strict ±500ms OEM requirement.',
+        suggested_revision: 'Assert interval delta strictly within [9500ms, 10500ms].'
+      }
+    },
+    {
+      id: 'TC-TLM-001-03',
+      req_id: 'REQ-TLM-001',
+      title: 'GNSS Antenna Disconnect / Fix Loss Handling with Last-Known Quality Flag',
+      description: 'Confirm ECU behavior when GNSS signal is lost (e.g. entering underground parking or disconnected antenna).',
+      category: 'Fault-Injection',
+      asil_target: 'ASIL-B',
+      estimated_duration_ms: 10000,
+      preconditions: ['Ignition ON, cellular connection active, valid initial GPS fix.'],
+      steps: [
+        {
+          step_num: 1,
+          action: 'Attenuate GNSS RF simulator signal by -45 dBm to induce fix loss.',
+          dwell_time_ms: 500
+        },
+        {
+          step_num: 2,
+          action: 'Observe cloud telemetry payload at next 10-second tick.',
+          dwell_time_ms: 10000
+        }
+      ],
+      expected_results: [
+        {
+          check_num: 1,
+          expectation: 'ECU transmits packet with GPS_Fix_Valid=FALSE, increments fix_lost_counter, and flags degraded sensor status without crashing.',
+          can_message_assertion: 'CAN3.0x390: Byte[1] == 0x00 (Fix Lost)',
+          max_latency_ms: 10000
+        }
+      ],
+      cleanup: ['Restore GNSS RF signal power.'],
+      critic_score: 92,
+      revised_by_critic: false
+    },
+    {
+      id: 'TC-TLM-001-04',
+      req_id: 'REQ-TLM-001',
+      title: 'Cellular Carrier Outage and Flash Ring-Buffer Queue Ingestion',
+      description: 'Verify that when cellular connection drops, telemetry samples are buffered locally in non-volatile flash memory without data loss.',
+      category: 'Communication-Loss',
+      asil_target: 'ASIL-B',
+      estimated_duration_ms: 12000,
+      preconditions: ['Ignition ON, valid GPS fix, cellular link active with 0 buffered packets.'],
+      steps: [
+        {
+          step_num: 1,
+          action: 'Disable RF carrier on base-station emulator to simulate cellular dead zone for 120 seconds.',
+          dwell_time_ms: 1000
+        },
+        {
+          step_num: 2,
+          action: 'Verify 12 GPS samples are written into the local eMMC/SPI-flash queue.',
+          dwell_time_ms: 120000
+        }
+      ],
+      expected_results: [
+        {
+          check_num: 1,
+          expectation: 'No crash or memory overflow; 12 GPS coordinates stored sequentially in flash buffer.',
+          can_message_assertion: 'CAN3.0x390: Byte[2] == 0x0C (Queue Depth 12)'
+        }
+      ],
+      cleanup: ['Re-enable cellular RF carrier.'],
+      critic_score: 94,
+      revised_by_critic: false
+    },
+    {
+      id: 'TC-TLM-001-05',
+      req_id: 'REQ-TLM-001',
+      title: 'KL15 Ignition Power Cycle Reboot and Fast Cloud Reconnection',
+      description: 'Evaluate ECU bootup sequence, cellular module initialization, and time to first valid GPS cloud transmission following sudden power cycle.',
+      category: 'Power-Cycle',
+      asil_target: 'ASIL-B',
+      estimated_duration_ms: 15000,
+      preconditions: ['ECU operating normally on bench with 12V KL30 battery supply.'],
+      steps: [
+        {
+          step_num: 1,
+          action: 'Toggle KL15 ignition switch OFF for 5.0 seconds, then toggle back to ON.',
+          dwell_time_ms: 5000
+        },
+        {
+          step_num: 2,
+          action: 'Measure latency until first authenticated GPS cloud message is received.',
+          dwell_time_ms: 15000
+        }
+      ],
+      expected_results: [
+        {
+          check_num: 1,
+          expectation: 'ECU finishes bootloader, initializes modem, acquires GNSS ephemeris, and publishes first message within 15 seconds.',
+          max_latency_ms: 15000
+        }
+      ],
+      cleanup: ['Power supply nominal.'],
+      critic_score: 93,
+      revised_by_critic: true
+    },
+    {
+      id: 'TC-TLM-001-06',
+      req_id: 'REQ-TLM-001',
+      title: 'Stale Coordinate Lock & Quality Flag Assertion',
+      description: 'Verify ECU detects frozen/stale NMEA coordinates from internal GNSS receiver and refuses to publish unverified coordinates as fresh.',
+      category: 'Negative',
+      asil_target: 'ASIL-B',
+      estimated_duration_ms: 10000,
+      preconditions: ['Ignition ON, modem connected, GNSS chip injecting frozen coordinate values.'],
+      steps: [
+        {
+          step_num: 1,
+          action: 'Freeze NMEA GPRMC sentence coordinate payload while vehicle speed is reported > 50 km/h.',
+          dwell_time_ms: 1000
+        },
+        {
+          step_num: 2,
+          action: 'Observe position freshness flag over next 3 periodic cycles (30 seconds).',
+          dwell_time_ms: 30000
+        }
+      ],
+      expected_results: [
+        {
+          check_num: 1,
+          expectation: 'ECU detects frozen coordinates during motion, asserts position_freshness=STALE (0x02), and logs DTC U0423-82.',
+          can_message_assertion: 'CAN3.0x390: Byte[3] == 0x02 (STALE)'
+        }
+      ],
+      cleanup: ['Unfreeze GNSS coordinates.'],
+      critic_score: 91,
+      revised_by_critic: true
+    },
+    {
+      id: 'TC-TLM-001-07',
+      req_id: 'REQ-TLM-001',
+      title: 'Cellular Reconnection and Buffered Telemetry Batch Flush',
+      description: 'Verify that when cellular signal is restored, ECU reconnects and flushes buffered GPS points in chronological FIFO order.',
+      category: 'Recovery',
+      asil_target: 'ASIL-B',
+      estimated_duration_ms: 15000,
+      preconditions: ['ECU has 12 buffered telemetry points in flash from previous cellular outage.'],
+      steps: [
+        {
+          step_num: 1,
+          action: 'Re-enable base station RF carrier.',
+          dwell_time_ms: 2000
+        },
+        {
+          step_num: 2,
+          action: 'Observe LTE modem re-attachment, TLS handshake, and queue draining cadence.',
+          dwell_time_ms: 15000
+        }
+      ],
+      expected_results: [
+        {
+          check_num: 1,
+          expectation: 'All 12 buffered packets are transmitted in chronological order with original historical timestamps, followed by resumption of real-time 10s cadence.',
+          can_message_assertion: 'CAN3.0x390: Byte[2] == 0x00 (Queue Drained)'
+        }
+      ],
+      cleanup: ['Verify queue empty.'],
+      critic_score: 95,
+      revised_by_critic: false
+    },
+    {
+      id: 'TC-TLM-001-08',
+      req_id: 'REQ-TLM-001',
+      title: 'Corrupted NMEA Latitude/Longitude Sentence & Checksum Invalidation',
+      description: 'Inject corrupted NMEA checksums and out-of-range coordinates (e.g. Latitude 95.0° N) to verify ECU input sanitization.',
+      category: 'Boundary',
+      asil_target: 'ASIL-B',
+      estimated_duration_ms: 10000,
+      preconditions: ['Ignition ON, modem online.'],
+      steps: [
+        {
+          step_num: 1,
+          action: 'Inject NMEA sentence with corrupted XOR checksum over internal UART.',
+          dwell_time_ms: 100
+        },
+        {
+          step_num: 2,
+          action: 'Inject NMEA sentence with invalid latitude value 95.1234° N.',
+          dwell_time_ms: 100
+        }
+      ],
+      expected_results: [
+        {
+          check_num: 1,
+          expectation: 'ECU parser rejects malformed sentence; does not broadcast corrupt coordinates to cloud.',
+          can_message_assertion: 'CAN3.0x390: Outbound frame suppressed'
+        }
+      ],
+      cleanup: ['Restore nominal NMEA streams.'],
+      critic_score: 94,
+      revised_by_critic: false
+    }
+  ],
   'REQ-BMS-042': [
     {
       id: 'TC-BMS-042-01',
@@ -339,6 +616,31 @@ export const DEMO_TEST_SUITES: Record<string, TestCase[]> = {
 };
 
 export const DEMO_CRITIC_REVIEWS: Record<string, CriticReview> = {
+  'REQ-TLM-001': {
+    req_id: 'REQ-TLM-001',
+    overall_score: 95,
+    rigor_rating: 'Exceptional',
+    missing_coverage_scenarios: [
+      'Original suite lacked check for frozen NMEA sentences when vehicle is moving at highway speeds.',
+      'Lacked cellular dead-zone buffer overflow threshold verification.'
+    ],
+    redundant_test_ids: [],
+    ambiguous_expected_results: [
+      'Original periodic interval tolerance stated "within a reasonable window" - tightened to strict ±500ms requirement (9,500ms to 10,500ms).'
+    ],
+    weak_test_conditions: [
+      'Cellular outage test was originally only 10 seconds; extended to 120 seconds (12 cycles) to evaluate flash queue depth.'
+    ],
+    critique_summary: 'Targeted telematics connectivity validation suite. Critic added edge cases for stale coordinate plausibility and flash buffer draining during cellular recovery.',
+    recommendations: [
+      'Validate LTE modem AT command response timeout in cold-boot test.',
+      'Verify MQTT payload compression on low-bandwidth LTE-M links.'
+    ],
+    original_test_count: 6,
+    revised_test_count: 8,
+    added_tests_count: 2,
+    refined_tests_count: 2
+  },
   'REQ-BMS-042': {
     req_id: 'REQ-BMS-042',
     overall_score: 94,
@@ -394,6 +696,178 @@ export const DEMO_CRITIC_REVIEWS: Record<string, CriticReview> = {
 };
 
 export const DEMO_SIMULATION_RESULTS: Record<string, SuiteExecutionSummary> = {
+  'REQ-TLM-001': {
+    run_id: 'RUN-2026-TLM-HIL-01',
+    req_id: 'REQ-TLM-001',
+    total_tests: 8,
+    passed: 7,
+    failed: 1,
+    blocked: 0,
+    average_latency_ms: 12.5,
+    max_latency_ms: 30.5,
+    execution_date: new Date('2026-03-24T15:30:00Z').toISOString(),
+    results: [
+      {
+        run_id: 'RUN-2026-TLM-HIL-01',
+        test_case_id: 'TC-TLM-001-01',
+        req_id: 'REQ-TLM-001',
+        test_title: 'Periodic Cloud Telemetry Transmission at 10-Second Cadence',
+        category: 'Happy-Path',
+        status: 'PASSED',
+        execution_time_ms: 10020,
+        measured_latency_ms: 10.02,
+        allowed_latency_ms: 10000.0,
+        step_results: [
+          { step_num: 1, passed: true, log: 'KL15 active, LTE registered with APN, GPS fix 3D valid.', timestamp_ms: 0 },
+          { step_num: 2, passed: true, log: 'Captured 6 consecutive packets at 10.02s mean cadence.', timestamp_ms: 60000 }
+        ],
+        can_trace: [
+          { timestamp_ms: 0.0, bus: 'CAN3_Body', id: '0x390', dlc: 8, data: '01 01 00 00 00 00 00 00', direction: 'Tx', signal_decoded: 'TCU_Status: Connected, GPS_Valid' },
+          { timestamp_ms: 10020.0, bus: 'CAN3_Body', id: '0x390', dlc: 8, data: '01 01 00 00 00 00 00 01', direction: 'Tx', signal_decoded: 'Telemetry_Tick: Packet 1 Sent' }
+        ]
+      },
+      {
+        run_id: 'RUN-2026-TLM-HIL-01',
+        test_case_id: 'TC-TLM-001-02',
+        req_id: 'REQ-TLM-001',
+        test_title: '10-Second Periodic Interval Jitter and Drift Boundary',
+        category: 'Timing',
+        status: 'PASSED',
+        execution_time_ms: 10100,
+        measured_latency_ms: 140.0,
+        allowed_latency_ms: 500.0,
+        step_results: [
+          { step_num: 1, passed: true, log: 'Packet sniffer recorded 100 cycles.', timestamp_ms: 0 },
+          { step_num: 2, passed: true, log: 'Max observed jitter: +140ms, Min: -110ms. Within ±500ms bound.', timestamp_ms: 100000 }
+        ],
+        can_trace: [
+          { timestamp_ms: 10140.0, bus: 'CAN3_Body', id: '0x390', dlc: 8, data: '01 01 00 00 00 00 00 02', direction: 'Tx', signal_decoded: 'Jitter_Delta=+140ms' }
+        ]
+      },
+      {
+        run_id: 'RUN-2026-TLM-HIL-01',
+        test_case_id: 'TC-TLM-001-03',
+        req_id: 'REQ-TLM-001',
+        test_title: 'GNSS Antenna Disconnect / Fix Loss Handling with Last-Known Quality Flag',
+        category: 'Fault-Injection',
+        status: 'PASSED',
+        execution_time_ms: 10500,
+        measured_latency_ms: 8.5,
+        allowed_latency_ms: 10000.0,
+        step_results: [
+          { step_num: 1, passed: true, log: 'GNSS signal attenuated. 3D fix lost.', timestamp_ms: 500 },
+          { step_num: 2, passed: true, log: 'Packet transmitted with GPS_Fix_Valid=FALSE; DTC B109F-13 set.', timestamp_ms: 10000 }
+        ],
+        can_trace: [
+          { timestamp_ms: 10000.0, bus: 'CAN3_Body', id: '0x390', dlc: 8, data: '01 00 00 00 00 00 00 03', direction: 'Tx', signal_decoded: 'Fix_Lost_Flag=1' }
+        ]
+      },
+      {
+        run_id: 'RUN-2026-TLM-HIL-01',
+        test_case_id: 'TC-TLM-001-04',
+        req_id: 'REQ-TLM-001',
+        test_title: 'Cellular Carrier Outage and Flash Ring-Buffer Queue Ingestion',
+        category: 'Communication-Loss',
+        status: 'PASSED',
+        execution_time_ms: 121000,
+        measured_latency_ms: 12.0,
+        allowed_latency_ms: 10000.0,
+        step_results: [
+          { step_num: 1, passed: true, log: 'Carrier muted for 120 seconds.', timestamp_ms: 1000 },
+          { step_num: 2, passed: true, log: 'RRC disconnection detected in 2.1s.', timestamp_ms: 3100 },
+          { step_num: 3, passed: true, log: '12 points successfully stored in flash buffer queue.', timestamp_ms: 120000 }
+        ],
+        can_trace: [
+          { timestamp_ms: 120000.0, bus: 'CAN3_Body', id: '0x390', dlc: 8, data: '00 01 0C 00 00 00 00 04', direction: 'Tx', signal_decoded: 'Queue_Depth=12' }
+        ]
+      },
+      {
+        run_id: 'RUN-2026-TLM-HIL-01',
+        test_case_id: 'TC-TLM-001-05',
+        req_id: 'REQ-TLM-001',
+        test_title: 'KL15 Ignition Power Cycle Reboot and Fast Cloud Reconnection',
+        category: 'Power-Cycle',
+        status: 'PASSED',
+        execution_time_ms: 13200,
+        measured_latency_ms: 12800.0,
+        allowed_latency_ms: 15000.0,
+        step_results: [
+          { step_num: 1, passed: true, log: 'KL15 cycled 5s.', timestamp_ms: 5000 },
+          { step_num: 2, passed: true, log: 'Cold boot and first cloud payload verified in 12.8s (<15s).', timestamp_ms: 12800 }
+        ],
+        can_trace: [
+          { timestamp_ms: 12800.0, bus: 'CAN3_Body', id: '0x390', dlc: 8, data: '01 01 00 00 00 00 00 05', direction: 'Tx', signal_decoded: 'First_Transmission_Active' }
+        ]
+      },
+      {
+        run_id: 'RUN-2026-TLM-HIL-01',
+        test_case_id: 'TC-TLM-001-06',
+        req_id: 'REQ-TLM-001',
+        test_title: 'Stale Coordinate Lock & Quality Flag Assertion',
+        category: 'Negative',
+        status: 'FAILED',
+        execution_time_ms: 30500,
+        measured_latency_ms: 28500.0,
+        allowed_latency_ms: 3000.0,
+        step_results: [
+          { step_num: 1, passed: true, log: 'Frozen NMEA coordinates injected at 65 km/h.', timestamp_ms: 1000 },
+          { step_num: 2, passed: false, log: 'DEFECT DETECTED: Quality flag remained locked at VALID (0x01) for 28.5s instead of transitioning to STALE within 3.0s!', timestamp_ms: 28500 }
+        ],
+        can_trace: [
+          { timestamp_ms: 1000.0, bus: 'CAN3_Body', id: '0x390', dlc: 8, data: '01 01 00 01 00 00 00 06', direction: 'Tx', signal_decoded: 'Quality_Flag=VALID (0x01)' },
+          { timestamp_ms: 28500.0, bus: 'CAN3_Body', id: '0x390', dlc: 8, data: '01 01 00 01 00 00 00 06', direction: 'Tx', signal_decoded: 'STALE_FLAG_FAILED_TO_SET' }
+        ],
+        defect: {
+          id: 'DEF-TLM-001',
+          test_case_id: 'TC-TLM-001-06',
+          req_id: 'REQ-TLM-001',
+          ecu: 'TCU (Telematics Control Unit)',
+          severity: 'High',
+          summary: 'Stale GPS Coordinate Transmission During Dead-Reckoning Timeout',
+          root_cause: 'In telematics gnss_filter.c line 248, the staleness debounce timer counter overflows on 16-bit register arithmetic, delaying STALE flag transition.',
+          can_discrepancy: 'CAN ID 0x390 Byte 3 remained 0x01 (VALID) for 28.5 seconds while vehicle speed was 65 km/h.',
+          actual_vs_expected: 'Expected: Quality flag must be set to STALE (0x02) after 3.0s without fresh coordinates. Actual: Stayed VALID for 28.5s.',
+          recommended_fix: 'Promote debounce counter in `gnss_filter.c` to `uint32_t` and bound maximum timeout to 3,000ms with explicit clamp.'
+        }
+      },
+      {
+        run_id: 'RUN-2026-TLM-HIL-01',
+        test_case_id: 'TC-TLM-001-07',
+        req_id: 'REQ-TLM-001',
+        test_title: 'Cellular Reconnection and Buffered Telemetry Batch Flush',
+        category: 'Recovery',
+        status: 'PASSED',
+        execution_time_ms: 15300,
+        measured_latency_ms: 4200.0,
+        allowed_latency_ms: 15000.0,
+        step_results: [
+          { step_num: 1, passed: true, log: 'Cellular carrier restored.', timestamp_ms: 2000 },
+          { step_num: 2, passed: true, log: '12 buffered packets drained in FIFO sequence in 4.2s.', timestamp_ms: 6200 }
+        ],
+        can_trace: [
+          { timestamp_ms: 6200.0, bus: 'CAN3_Body', id: '0x390', dlc: 8, data: '01 01 00 00 00 00 00 07', direction: 'Tx', signal_decoded: 'Queue_Drained_Successfully' }
+        ]
+      },
+      {
+        run_id: 'RUN-2026-TLM-HIL-01',
+        test_case_id: 'TC-TLM-001-08',
+        req_id: 'REQ-TLM-001',
+        test_title: 'Corrupted NMEA Latitude/Longitude Sentence & Checksum Invalidation',
+        category: 'Boundary',
+        status: 'PASSED',
+        execution_time_ms: 10200,
+        measured_latency_ms: 1.2,
+        allowed_latency_ms: 50.0,
+        step_results: [
+          { step_num: 1, passed: true, log: 'Corrupted XOR checksum injected.', timestamp_ms: 100 },
+          { step_num: 2, passed: true, log: 'Invalid latitude 95.1234° N rejected by sanitization layer.', timestamp_ms: 200 }
+        ],
+        can_trace: [
+          { timestamp_ms: 200.0, bus: 'CAN3_Body', id: '0x390', dlc: 8, data: '01 01 00 00 01 00 00 08', direction: 'Tx', signal_decoded: 'Sanitization_Drop=CorruptNMEA' }
+        ]
+      }
+    ]
+  },
   'REQ-BMS-042': {
     run_id: 'RUN-2026-BMS-HIL-01',
     req_id: 'REQ-BMS-042',
