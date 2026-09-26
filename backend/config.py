@@ -2,16 +2,18 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Search for .env in backend/ or root
+# Search for .env in backend/ or root, and check .env.local
 backend_env = Path(__file__).resolve().parent / ".env"
+root_env_local = Path(__file__).resolve().parent.parent / ".env.local"
 root_env = Path(__file__).resolve().parent.parent / ".env"
 
+if root_env_local.exists():
+    load_dotenv(root_env_local)
 if backend_env.exists():
     load_dotenv(backend_env)
-elif root_env.exists():
+if root_env.exists():
     load_dotenv(root_env)
-else:
-    load_dotenv()
+load_dotenv()
 
 class Settings:
     PROJECT_NAME: str = "PACCAR TestPilot AI"
@@ -19,7 +21,7 @@ class Settings:
     
     # Gemini configuration
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "").strip()
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.5-flash").strip()
     
     # Demo Mode: if True or if GEMINI_API_KEY is empty, deterministic mock responses are used
     DEMO_MODE: bool = os.getenv("DEMO_MODE", "false").lower() in ("true", "1", "yes")

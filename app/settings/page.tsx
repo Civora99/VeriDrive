@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Cpu,
   Database,
@@ -10,7 +10,10 @@ import {
   Server,
   Zap,
   Sliders,
-  Check
+  Check,
+  Sun,
+  Moon,
+  Palette
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -18,6 +21,32 @@ export default function SettingsPage() {
   const router = useRouter();
   const [resetting, setResetting] = useState(false);
   const [resetDone, setResetDone] = useState(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
+  useEffect(() => {
+    const updateTheme = () => {
+      const isDark = document.documentElement.classList.contains('dark');
+      setTheme(isDark ? 'dark' : 'light');
+    };
+    updateTheme();
+    window.addEventListener('theme-change', updateTheme);
+    return () => window.removeEventListener('theme-change', updateTheme);
+  }, []);
+
+  const selectTheme = (newTheme: 'dark' | 'light') => {
+    if (newTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
+    } else {
+      document.documentElement.classList.add('light');
+      document.documentElement.classList.remove('dark');
+    }
+    try {
+      localStorage.setItem('veridrive_theme', newTheme);
+    } catch {}
+    setTheme(newTheme);
+    window.dispatchEvent(new Event('theme-change'));
+  };
 
   const handleResetDemo = () => {
     setResetting(true);
@@ -44,6 +73,71 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-5">
+        {/* SECTION 0: APPEARANCE & COLOUR SCHEME */}
+        <div className="bg-[#111622] border border-slate-800 rounded-lg p-5 space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+            <div className="flex items-center space-x-2 text-slate-200 font-semibold text-sm">
+              <Palette className="w-4 h-4 text-sky-400" />
+              <span>Appearance & Colour Scheme</span>
+            </div>
+            <span className="text-[11px] text-slate-400 font-mono">
+              Active: <strong className="text-sky-400 uppercase">{theme} Mode</strong>
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            {/* Dark Mode Option */}
+            <div
+              onClick={() => selectTheme('dark')}
+              className={`p-3.5 rounded-lg border cursor-pointer transition-all ${
+                theme === 'dark'
+                  ? 'border-sky-500 bg-sky-950/20 ring-1 ring-sky-500/40'
+                  : 'border-slate-800 bg-[#0b0f17] hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-7 h-7 rounded bg-slate-900 border border-slate-800 flex items-center justify-center text-amber-400">
+                    <Moon className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-semibold text-slate-200 block">Dark Mode</span>
+                    <span className="text-[11px] text-slate-400">Obsidian & high-contrast automotive UI</span>
+                  </div>
+                </div>
+                {theme === 'dark' && (
+                  <CheckCircle2 className="w-4 h-4 text-sky-400" />
+                )}
+              </div>
+            </div>
+
+            {/* Light Mode Option */}
+            <div
+              onClick={() => selectTheme('light')}
+              className={`p-3.5 rounded-lg border cursor-pointer transition-all ${
+                theme === 'light'
+                  ? 'border-sky-500 bg-sky-50/20 ring-1 ring-sky-500/40'
+                  : 'border-slate-800 bg-[#0b0f17] hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-7 h-7 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-sky-600">
+                    <Sun className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-semibold text-slate-200 block">Light Mode</span>
+                    <span className="text-[11px] text-slate-400">Clean engineering blueprint layout</span>
+                  </div>
+                </div>
+                {theme === 'light' && (
+                  <CheckCircle2 className="w-4 h-4 text-sky-400" />
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* SECTION 1: AI MODEL */}
         <div className="bg-[#111622] border border-slate-800 rounded-lg p-5 space-y-3">
           <div className="flex items-center space-x-2 text-slate-200 font-semibold text-sm pb-2 border-b border-slate-800/80">

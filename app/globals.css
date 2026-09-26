@@ -1,17 +1,62 @@
 @import "tailwindcss";
 
-:root {
+:root,
+.dark {
   --background: #0b0f17;
   --foreground: #f8fafc;
   --card: #111622;
   --card-foreground: #f1f5f9;
+  --card-secondary: #0e131d;
   --border: #1e293b;
-  --accent: #0284c7;
-  --accent-hover: #0369a1;
+  --border-subtle: #1e293b;
+  --border-hover: #334155;
+  --muted: #94a3b8;
+  --muted-foreground: #64748b;
+  --accent: #38bdf8;
+  --accent-hover: #0284c7;
+  --header-bg: #0e131d;
+  --footer-bg: #080c13;
+  --input-bg: #0b0f17;
+  --input-border: #1e293b;
+  --hover-bg: rgba(30, 41, 59, 0.4);
+  --grid-color: rgba(255, 255, 255, 0.02);
+  --scrollbar-track: #0b0f17;
+  --scrollbar-thumb: #1e293b;
+  --scrollbar-hover: #334155;
   --pass: #10b981;
   --fail: #ef4444;
   --warning: #f59e0b;
   --info: #3b82f6;
+  color-scheme: dark;
+}
+
+.light {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --card-secondary: #f1f5f9;
+  --border: #e2e8f0;
+  --border-subtle: #f1f5f9;
+  --border-hover: #cbd5e1;
+  --muted: #64748b;
+  --muted-foreground: #94a3b8;
+  --accent: #0284c7;
+  --accent-hover: #0369a1;
+  --header-bg: #ffffff;
+  --footer-bg: #f8fafc;
+  --input-bg: #ffffff;
+  --input-border: #cbd5e1;
+  --hover-bg: rgba(241, 245, 249, 0.9);
+  --grid-color: rgba(15, 23, 42, 0.035);
+  --scrollbar-track: #f1f5f9;
+  --scrollbar-thumb: #cbd5e1;
+  --scrollbar-hover: #94a3b8;
+  --pass: #059669;
+  --fail: #dc2626;
+  --warning: #d97706;
+  --info: #2563eb;
+  color-scheme: light;
 }
 
 body {
@@ -21,12 +66,17 @@ body {
   overflow-x: hidden;
 }
 
-/* Subtle engineering grid - very faint */
+/* Subtle engineering blueprint grid */
 .subtle-grid {
   background-size: 32px 32px;
   background-image: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+    linear-gradient(to right, var(--grid-color) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px);
+}
+
+/* Smooth theme transitions for core visual components */
+body, header, footer, main, input, textarea, button, table {
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 /* Custom scrollbars */
@@ -35,12 +85,219 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0b0f17;
+  background: var(--scrollbar-track);
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: var(--scrollbar-hover);
+}
+
+/* ==========================================================================
+   LIGHT MODE DESIGN SYSTEM OVERRIDES
+   Provides comprehensive, high-contrast, professional automotive styling
+   when .light class is active on <html>.
+   ========================================================================== */
+
+/* Surfaces & Containers */
+.light header {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03) !important;
+}
+
+.light .bg-\[\#111622\] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.02) !important;
+}
+
+.light .bg-\[\#0b0f17\] {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+.light .bg-\[\#0e131d\] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+.light .bg-\[\#080c13\] {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+.light .bg-slate-900 {
+  background-color: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+}
+
+.light .bg-slate-950,
+.light .bg-slate-950\/60,
+.light .bg-slate-950\/40,
+.light .bg-slate-950\/30 {
+  background-color: #f8fafc !important;
+}
+
+.light .bg-slate-800 {
+  background-color: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
+}
+
+.light .bg-slate-800\/80,
+.light .bg-slate-800\/60,
+.light .bg-slate-800\/40 {
+  background-color: rgba(241, 245, 249, 0.8) !important;
+}
+
+/* Hover States in Light Mode */
+.light .hover\:bg-slate-800:hover {
+  background-color: #e2e8f0 !important;
+}
+
+.light .hover\:bg-slate-900:hover {
+  background-color: #e2e8f0 !important;
+}
+
+.light .hover\:bg-slate-800\/40:hover,
+.light .hover\:bg-slate-800\/60:hover {
+  background-color: #f1f5f9 !important;
+}
+
+/* Borders & Dividers */
+.light .border-slate-800,
+.light .border-slate-800\/80,
+.light .border-slate-800\/60,
+.light .border-slate-700,
+.light .border-slate-900 {
+  border-color: #e2e8f0 !important;
+}
+
+.light .divide-slate-800,
+.light .divide-slate-800\/80,
+.light .divide-slate-800\/60,
+.light .divide-slate-900 {
+  border-color: #e2e8f0 !important;
+}
+
+/* Typography in Light Mode */
+.light .text-slate-100 {
+  color: #0f172a !important;
+}
+
+.light .text-slate-200 {
+  color: #1e293b !important;
+}
+
+.light .text-slate-300 {
+  color: #334155 !important;
+}
+
+.light .text-slate-400 {
+  color: #64748b !important;
+}
+
+.light .text-slate-500 {
+  color: #64748b !important;
+}
+
+.light .text-slate-600 {
+  color: #94a3b8 !important;
+}
+
+/* Inputs & Textareas in Light Mode */
+.light textarea,
+.light input[type="text"],
+.light input[type="search"],
+.light select {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+.light textarea::placeholder,
+.light input::placeholder {
+  color: #94a3b8 !important;
+}
+
+.light textarea:focus,
+.light input:focus,
+.light select:focus {
+  border-color: #0284c7 !important;
+}
+
+/* Light Mode Badges & Category Tags */
+.light .bg-sky-950\/60,
+.light .bg-sky-950\/40,
+.light .bg-sky-950\/30 {
+  background-color: #f0f9ff !important;
+  border-color: #bae6fd !important;
+  color: #0284c7 !important;
+}
+
+.light .text-sky-400 {
+  color: #0284c7 !important;
+}
+
+.light .border-sky-900\/50,
+.light .border-sky-900\/60 {
+  border-color: #bae6fd !important;
+}
+
+.light .bg-emerald-950\/60,
+.light .bg-emerald-950\/40,
+.light .bg-emerald-950\/30 {
+  background-color: #ecfdf5 !important;
+  border-color: #a7f3d0 !important;
+  color: #047857 !important;
+}
+
+.light .text-emerald-400 {
+  color: #059669 !important;
+}
+
+.light .bg-amber-950\/60,
+.light .bg-amber-950\/40,
+.light .bg-amber-950\/30 {
+  background-color: #fffbeb !important;
+  border-color: #fde68a !important;
+  color: #b45309 !important;
+}
+
+.light .text-amber-400 {
+  color: #d97706 !important;
+}
+
+.light .bg-red-950\/60,
+.light .bg-red-950\/40,
+.light .bg-red-950\/30 {
+  background-color: #fef2f2 !important;
+  border-color: #fecaca !important;
+  color: #b91c1c !important;
+}
+
+.light .text-red-400 {
+  color: #dc2626 !important;
+}
+
+.light .bg-purple-950\/60,
+.light .bg-purple-950\/40,
+.light .bg-purple-950\/30 {
+  background-color: #faf5ff !important;
+  border-color: #e9d5ff !important;
+  color: #7e22ce !important;
+}
+
+.light .text-purple-400 {
+  color: #7e22ce !important;
+}
+
+/* Modals, Drawers and Overlays */
+.light [role="dialog"],
+.light .fixed.inset-y-0.right-0 {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: -4px 0 25px -5px rgba(0, 0, 0, 0.1) !important;
 }

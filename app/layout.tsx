@@ -25,16 +25,38 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}>
-      <body className="min-h-full flex flex-col bg-[#0b0f17] text-slate-100 subtle-grid">
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var stored = localStorage.getItem('veridrive_theme');
+                  var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                  var theme = stored || (prefersDark ? 'dark' : 'light');
+                  if (theme === 'dark') {
+                    document.documentElement.classList.add('dark');
+                    document.documentElement.classList.remove('light');
+                  } else {
+                    document.documentElement.classList.add('light');
+                    document.documentElement.classList.remove('dark');
+                  }
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
+      </head>
+      <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--foreground)] subtle-grid transition-colors duration-200">
         <Navbar />
         <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8">
           {children}
         </main>
-        <footer className="border-t border-slate-900 bg-[#080c13] py-4 text-center text-xs text-slate-500">
+        <footer className="border-t border-[var(--border)] bg-[var(--card-secondary)] py-4 text-center text-xs text-[var(--muted)] transition-colors duration-200">
           <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
             <div>VeriDrive AI • Automotive Requirements Validation Intelligence</div>
-            <div className="text-[11px] text-slate-600">
+            <div className="text-[11px] opacity-75">
               Developed for PACCAR India Hackathon • ISO 26262 & ASPICE Alignment
             </div>
           </div>

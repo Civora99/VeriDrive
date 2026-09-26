@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Settings, ShieldCheck, CheckCircle2, RotateCcw } from 'lucide-react';
+import { ThemeToggle } from '@/components/shared/ThemeToggle';
 
 export const Navbar: React.FC = () => {
   const pathname = usePathname();
@@ -80,6 +81,9 @@ export const Navbar: React.FC = () => {
               <span className="font-medium">DEMO MODE</span>
               <span className="text-slate-500 hidden sm:inline ml-1">(REQ-TLM-001)</span>
             </button>
+
+            {/* Theme Toggle (Light / Dark) */}
+            <ThemeToggle />
 
             {/* Settings Icon */}
             <Link

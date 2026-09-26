@@ -45,7 +45,7 @@ function cleanJsonString(raw: string): string {
  */
 export async function extractRequirementWithAI(rawText: string): Promise<StructuredRequirement> {
   const ai = getGenAIClient();
-  const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const modelName = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 
   if (ai) {
     try {
@@ -155,7 +155,7 @@ export async function extractRequirementWithAI(rawText: string): Promise<Structu
  */
 export async function generateTestSuiteWithAI(requirement: StructuredRequirement): Promise<TestCase[]> {
   const ai = getGenAIClient();
-  const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const modelName = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 
   if (ai) {
     try {
@@ -253,7 +253,7 @@ export async function critiqueTestSuiteWithAI(
   testCases: TestCase[]
 ): Promise<{ critic_review: CriticReview; revised_test_cases: TestCase[] }> {
   const ai = getGenAIClient();
-  const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const modelName = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 
   if (ai) {
     try {
