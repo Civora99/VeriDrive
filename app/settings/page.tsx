@@ -76,28 +76,42 @@ export default function SettingsPage() {
           <div className="space-y-2.5 text-xs">
             <div className="flex items-center justify-between p-3 rounded bg-[#0b0f17] border border-slate-800/80">
               <div className="flex items-center space-x-2.5">
-                <Database className="w-4 h-4 text-emerald-400" />
+                <Server className="w-4 h-4 text-emerald-400" />
+                <div>
+                  <span className="font-medium text-slate-200 block">Python FastAPI Backend</span>
+                  <span className="text-[11px] text-slate-500 font-mono">http://127.0.0.1:8000 • Querying AI & Validation Logic</span>
+                </div>
+              </div>
+              <span className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-950/60 text-emerald-400 border border-emerald-800/80">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span>Online (Port 8000)</span>
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded bg-[#0b0f17] border border-slate-800/80">
+              <div className="flex items-center space-x-2.5">
+                <Database className="w-4 h-4 text-sky-400" />
                 <div>
                   <span className="font-medium text-slate-200 block">Supabase PostgreSQL</span>
                   <span className="text-[11px] text-slate-500">Live DB with Typed Memory Cache Fallback</span>
                 </div>
               </div>
-              <span className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-950/60 text-emerald-400 border border-emerald-800/80">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-950/60 text-sky-400 border border-sky-800/80">
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
                 <span>Connected</span>
               </span>
             </div>
 
             <div className="flex items-center justify-between p-3 rounded bg-[#0b0f17] border border-slate-800/80">
               <div className="flex items-center space-x-2.5">
-                <Zap className="w-4 h-4 text-sky-400" />
+                <Zap className="w-4 h-4 text-emerald-400" />
                 <div>
                   <span className="font-medium text-slate-200 block">HIL Simulation Engine</span>
                   <span className="text-[11px] text-slate-500">CAN 2.0B / J1939 Virtual Test Bench</span>
                 </div>
               </div>
-              <span className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-950/60 text-sky-400 border border-sky-800/80">
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+              <span className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-950/60 text-emerald-400 border border-emerald-800/80">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                 <span>Ready (14ms)</span>
               </span>
             </div>

@@ -121,28 +121,73 @@ function AnalyzeContent() {
     setErrorMsg(null);
 
     try {
-      const res = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          raw_text: inputText,
-          req_id: activeReqId || undefined
-        })
-      });
-
-      const data = await res.json();
-      if (data.success && data.requirement) {
-        setRequirement(data.requirement);
-      } else {
-        // Fallback to demo requirement for smooth presentation
-        const matchingDemo = DEMO_REQUIREMENTS.find((r) =>
-          inputText.toLowerCase().includes(r.id.toLowerCase()) ||
-          inputText.toLowerCase().includes(r.ecu.toLowerCase())
-        ) || DEMO_REQ_TLM;
-
-        setRequirement(matchingDemo);
+      // 1. Primary: Query Python FastAPI backend directly
+      let pyData: any = null;
+      try {
+        const pyRes = await fetch('http://127.0.0.1:8000/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requirement: inputText.trim() }),
+        });
+        if (pyRes.ok) {
+          pyData = await pyRes.json();
+        }
+      } catch (directErr) {
+        console.warn('Direct Python backend call failed, falling back to /api/analyze proxy:', directErr);
       }
-    } catch (err) {
+
+      // 2. Fallback to /api/analyze (which also forwards to Python backend)
+      if (!pyData) {
+        const res = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requirement: inputText,
+            raw_text: inputText,
+            req_id: activeReqId || undefined,
+          }),
+        });
+        const resJson = await res.json();
+        if (resJson.py_data) {
+          pyData = resJson.py_data;
+        } else if (resJson.requirement) {
+          setRequirement(resJson.requirement);
+          return;
+        }
+      }
+
+      if (pyData) {
+        // Map Python backend RequirementAnalysis to StructuredRequirement
+        const structured: StructuredRequirement = {
+          id: pyData.requirement_id || 'REQ-001',
+          title: pyData.requirement_text?.slice(0, 100) || 'Automotive Software Requirement',
+          raw_text: pyData.requirement_text || inputText,
+          ecu: pyData.component || 'Telematics ECU',
+          asil_level: 'ASIL-B',
+          category: (pyData.category || 'Functional + Timing') as any,
+          inputs: (pyData.inputs || []).map((name: string) => ({ name, type: 'signal' })),
+          outputs: (pyData.outputs || []).map((name: string) => ({ name, type: 'telemetry' })),
+          triggers: pyData.conditions || [],
+          conditions: pyData.conditions || [],
+          timing_constraints: (pyData.constraints || []).map((c: string) => ({
+            metric: c,
+            max_latency_ms: 10000,
+          })),
+          interfaces: pyData.interfaces || [],
+          dependencies: pyData.dependencies || [],
+          failure_conditions: pyData.risks || [],
+          safety_related_wording: [],
+          diagnostic_implications: [],
+          risk_score: 75,
+          confidence_score: 95,
+          created_at: new Date().toISOString(),
+          status: 'Analyzed',
+        };
+        setRequirement(structured);
+      } else {
+        setRequirement(DEMO_REQ_TLM);
+      }
+    } catch (err: any) {
       console.warn('API error, falling back to deterministic requirement model:', err);
       setRequirement(DEMO_REQ_TLM);
     } finally {

@@ -67,7 +67,7 @@ export const Navbar: React.FC = () => {
             {/* Connection Indicator */}
             <div className="hidden lg:flex items-center space-x-1.5 px-2.5 py-1 rounded bg-slate-900 border border-slate-800 text-slate-400 text-[11px]">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span>HIL Engine: Online</span>
+              <span>Python Engine: 8000</span>
             </div>
 
             {/* Demo Mode Button / Badge */}
