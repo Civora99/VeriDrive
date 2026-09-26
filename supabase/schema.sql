@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS requirements (
 CREATE TABLE IF NOT EXISTS analysis_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     requirement_id UUID NOT NULL REFERENCES requirements(id) ON DELETE CASCADE,
+    run_type TEXT DEFAULT 'REQUIREMENT_ANALYSIS',
     model_name TEXT NOT NULL,
     analysis_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     status TEXT NOT NULL DEFAULT 'COMPLETED',
@@ -45,26 +46,30 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
 CREATE TABLE IF NOT EXISTS test_cases (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     requirement_id UUID NOT NULL REFERENCES requirements(id) ON DELETE CASCADE,
-    test_key TEXT NOT NULL UNIQUE,
+    test_key TEXT NOT NULL,
     title TEXT NOT NULL,
     category TEXT NOT NULL,
     objective TEXT,
+    reason_generated TEXT,
     preconditions TEXT,
     test_steps JSONB NOT NULL DEFAULT '[]'::jsonb,
     inputs JSONB DEFAULT '{}'::jsonb,
     expected_result TEXT NOT NULL,
-    pass_criteria TEXT NOT NULL,
+    pass_criteria TEXT DEFAULT '',
     priority TEXT DEFAULT 'Medium',
     risk_level TEXT DEFAULT 'Medium',
     generated_by TEXT DEFAULT 'AI-Generator',
     critic_status TEXT DEFAULT 'PENDING',
-    created_at TIMESTAMPTZ DEFAULT now()
+    critic_feedback TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    CONSTRAINT unique_req_test_key UNIQUE (requirement_id, test_key)
 );
 
 -- 2.4 TEST RUNS TABLE
 CREATE TABLE IF NOT EXISTS test_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     requirement_id UUID NOT NULL REFERENCES requirements(id) ON DELETE CASCADE,
+    run_key TEXT,
     run_name TEXT NOT NULL,
     total_tests INTEGER NOT NULL DEFAULT 0,
     passed INTEGER NOT NULL DEFAULT 0,
@@ -95,6 +100,7 @@ CREATE TABLE IF NOT EXISTS test_results (
     status TEXT NOT NULL,
     observed_result TEXT NOT NULL,
     failure_reason TEXT,
+    potential_defect TEXT,
     defect_id UUID REFERENCES defects(id) ON DELETE SET NULL,
     execution_time_ms INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT now()
